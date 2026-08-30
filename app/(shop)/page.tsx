@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { HeroSection } from "@/components/shop/HeroSection";
+import { BenefitsStrip } from "@/components/shop/BenefitsStrip";
 import { ProductGrid } from "@/components/shop/ProductGrid";
 
 interface HomeProps {
@@ -12,9 +13,10 @@ export default async function Home({ searchParams }: HomeProps) {
   return (
     <>
       <HeroSection />
-      <section className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6">
+      <BenefitsStrip />
+      <section id="catalogo" className="mx-auto w-full max-w-7xl flex-1 scroll-mt-20 px-4 py-10 sm:px-6">
         <h2 className="mb-6 text-xl font-semibold text-slate-900">
-          Productos destacados
+          {categoria ? categoria : "Productos destacados"}
         </h2>
         <Suspense fallback={<ProductGridSkeleton />}>
           <ProductGrid q={q} categoria={categoria} />

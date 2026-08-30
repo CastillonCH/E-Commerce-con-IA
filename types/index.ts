@@ -36,6 +36,13 @@ export interface Product {
   imagen_url: string;
   /** Categoría asignada automáticamente por el modelo de IA (Transfer Learning). */
   categoria_ia: string;
+  /** Precio de lista antes del descuento. Si está presente y es mayor a `precio`, se muestra tachado + badge de %. */
+  precioOriginal?: number;
+  /** Promedio de 0 a 5. Opcional: un producto recién clasificado por la IA aún no tiene reseñas. */
+  rating?: number;
+  numResenas?: number;
+  envioGratis?: boolean;
+  esNuevo?: boolean;
 }
 
 /** Respuesta del motor de IA al clasificar la imagen de un producto nuevo. */

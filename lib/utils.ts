@@ -12,3 +12,12 @@ export function formatCurrency(amount: number): string {
     currency: APP_CONFIG.currency,
   }).format(amount);
 }
+
+/** % de descuento redondeado, o null si no hay precio de lista o no es mayor al precio actual. */
+export function discountPercent(
+  precio: number,
+  precioOriginal?: number
+): number | null {
+  if (!precioOriginal || precioOriginal <= precio) return null;
+  return Math.round(((precioOriginal - precio) / precioOriginal) * 100);
+}
