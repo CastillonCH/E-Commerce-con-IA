@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Search,
   ShoppingCart,
@@ -56,17 +56,25 @@ export function Navbar({ session }: NavbarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Un solo departamento abierto a la vez, controlado en JS: con hover en
+  // CSS puro, mover el mouse rápido entre departamentos podía dejar dos
+  // mega-menús visibles a la vez mientras uno se desvanecía y el otro
+  // aparecía. `closeTimer` da un pequeño margen para pasar el mouse del
+  // enlace al panel sin que se cierre de golpe.
+  const [openDept, setOpenDept] = useState<Departamento | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function openDeptMenu(departamento: Departamento) {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpenDept(departamento);
+  }
+
+  function scheduleCloseDeptMenu() {
+    closeTimer.current = setTimeout(() => setOpenDept(null), 150);
+  }
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm">
-      {/* Mini fila superior, al estilo "Soporte" de Samsung. El acceso de
-          staff (/admin/login) NO se enlaza aquí a propósito: nunca se
-          anuncia una puerta de administrador en el sitio público. */}
-      <div className="hidden border-b border-slate-50 lg:block">
-        <div className="mx-auto flex max-w-7xl items-center justify-end gap-5 px-6 py-1.5 text-xs text-slate-500">
-          <Link href="/ayuda" className="hover:text-brand">Ayuda</Link>
-        </div>
-      </div>
-
       {/* Barra principal */}
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 sm:flex-nowrap sm:gap-6 sm:px-6">
         <button
@@ -84,18 +92,32 @@ export function Navbar({ session }: NavbarProps) {
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex">
-          {DEPARTAMENTOS.map((departamento) => (
-            <div key={departamento} className="group/dept relative">
-              <Link
-                href={`/?categoria=${departamento}`}
-                className="relative flex items-center px-3 py-2 text-sm font-medium text-slate-800"
+          {DEPARTAMENTOS.map((departamento) => {
+            const isOpen = openDept === departamento;
+            return (
+              <div
+                key={departamento}
+                className="relative"
+                onMouseEnter={() => openDeptMenu(departamento)}
+                onMouseLeave={scheduleCloseDeptMenu}
               >
-                {departamento}
-                <span className="absolute inset-x-3 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-brand transition-transform duration-200 group-hover/dept:scale-x-100" />
-              </Link>
-              <DepartmentMegaMenu departamento={departamento} />
-            </div>
-          ))}
+                <Link
+                  href={`/?categoria=${departamento}`}
+                  onClick={() => setOpenDept(null)}
+                  className="relative flex items-center px-3 py-2 text-sm font-medium text-slate-800"
+                >
+                  {departamento}
+                  <span
+                    className={cn(
+                      "absolute inset-x-3 -bottom-0.5 h-0.5 origin-left bg-brand transition-transform duration-200",
+                      isOpen ? "scale-x-100" : "scale-x-0"
+                    )}
+                  />
+                </Link>
+                {isOpen && <DepartmentMegaMenu departamento={departamento} />}
+              </div>
+            );
+          })}
         </nav>
 
         <form action="/" className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:ml-auto sm:w-auto sm:max-w-xs sm:flex-1">
@@ -162,7 +184,7 @@ export function Navbar({ session }: NavbarProps) {
                       <User className="h-4 w-4" />
                       Iniciar sesión
                     </Link>
-                    <Link href="/login?tab=register" className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-brand hover:bg-slate-50">
+                    <Link href="/login?tab=register" className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
                       <UserPlus className="h-4 w-4" />
                       Crear cuenta
                     </Link>

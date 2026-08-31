@@ -5,19 +5,23 @@ import type { Departamento } from "@/types";
 import { MOCK_PRODUCTS } from "@/lib/mock-products";
 
 /**
- * Panel que se revela con `group-hover`/`group-focus-within` desde el botón
- * del departamento en el Navbar (ver DEPARTMENT_ITEM_CLASSES ahí). Usa
- * productos reales del catálogo simulado como vitrina — nada de datos
- * inventados — así que el número de miniaturas varía según cuántos
- * productos tenga ese departamento hoy.
+ * Panel que el Navbar monta/desmonta según su propio estado (`openDept`),
+ * no CSS `group-hover`: con hover puro, cuando el mouse pasa rápido de un
+ * departamento a otro, el panel que se cierra puede tardar en desvanecerse
+ * mientras el nuevo ya apareció — ambos visibles a la vez, superpuestos. Con
+ * un solo estado en el padre, abrir uno cierra el otro en el mismo render,
+ * así nunca puede haber dos abiertos simultáneamente. Usa productos reales
+ * del catálogo simulado como vitrina — nada de datos inventados — así que
+ * el número de miniaturas varía según cuántos productos tenga ese
+ * departamento hoy.
  */
 export function DepartmentMegaMenu({ departamento }: { departamento: Departamento }) {
   const featured = MOCK_PRODUCTS.filter((p) => p.departamento === departamento).slice(0, 4);
   const verTodoHref = `/?categoria=${departamento}`;
 
   return (
-    <div className="invisible absolute left-1/2 top-full z-50 -translate-x-1/2 pt-3 opacity-0 transition-all duration-200 ease-out group-hover/dept:visible group-hover/dept:translate-y-0 group-hover/dept:opacity-100 group-focus-within/dept:visible group-focus-within/dept:opacity-100">
-      <div className="flex gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+    <div className="absolute left-1/2 top-full z-50 -translate-x-1/2 pt-3">
+      <div className="animate-[scale-in_0.15s_ease-out] flex gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
         {featured.length > 0 && (
           <div className="flex gap-4">
             {featured.map((product) => (

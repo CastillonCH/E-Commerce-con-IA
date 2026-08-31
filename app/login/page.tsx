@@ -66,12 +66,17 @@ function AuthForm() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <div className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6">
-        <Link href="/" className="text-xl font-extrabold tracking-tight text-slate-900">
+        <Link href="/" className="text-2xl font-extrabold tracking-tight text-slate-900">
           Nova<span className="text-brand">Store</span>
         </Link>
       </div>
 
-      <div className="flex flex-1 items-center justify-center px-4 py-10">
+      {/* pt-fijo en vez de centrado vertical: si el formulario se centrara
+          en el alto disponible, cambiar de pestaña (login <-> registro
+          cambia cuántos campos hay) desplazaría todo el bloque de golpe,
+          incluidas las pestañas y el logo de arriba. Con un ancla fija
+          arriba, solo se mueve el espacio vacío debajo, invisible. */}
+      <div className="flex flex-1 justify-center px-4 pt-12 pb-10 sm:pt-20">
         <div className="w-full max-w-sm">
           <div className="mb-6 flex rounded-full bg-slate-100 p-1">
             <button
@@ -96,14 +101,16 @@ function AuthForm() {
             </button>
           </div>
 
-          <h1 className="mb-1 text-2xl font-bold text-slate-900">
-            {tab === "login" ? "Bienvenido de vuelta" : "Crea tu cuenta"}
-          </h1>
-          <p className="mb-6 text-sm text-slate-500">
-            {tab === "login"
-              ? "Ingresa para continuar tu compra."
-              : "Regístrate para comprar, guardar tus direcciones y ver tus pedidos."}
-          </p>
+          <div key={tab} className="animate-[fade-in_0.2s_ease-out]">
+            <h1 className="mb-1 text-2xl font-bold text-slate-900">
+              {tab === "login" ? "Bienvenido de vuelta" : "Crea tu cuenta"}
+            </h1>
+            <p className="mb-6 text-sm text-slate-500">
+              {tab === "login"
+                ? "Ingresa para continuar tu compra."
+                : "Regístrate para comprar, guardar tus direcciones y ver tus pedidos."}
+            </p>
+          </div>
 
           <a
             href={`/api/auth/google?from=${encodeURIComponent(from)}`}
@@ -128,7 +135,7 @@ function AuthForm() {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {tab === "register" && (
-              <div>
+              <div className="animate-[fade-up_0.25s_ease-out_backwards]">
                 <Label htmlFor="name">Nombre</Label>
                 <Input
                   id="name"
