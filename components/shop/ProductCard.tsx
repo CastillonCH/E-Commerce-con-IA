@@ -18,7 +18,7 @@ export function ProductCard({ product }: { product: Product }) {
   }
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all hover:-translate-y-0.5 hover:shadow-lg">
+    <article className="group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
         <Image
           src={product.imagen_url}
@@ -83,7 +83,7 @@ export function ProductCard({ product }: { product: Product }) {
         <Button
           onClick={handleAddToCart}
           disabled={product.stock === 0}
-          className="mt-3 w-full"
+          className="mt-auto w-full"
         >
           <ShoppingCart className="h-4 w-4" />
           Añadir al carrito

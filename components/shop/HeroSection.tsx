@@ -40,18 +40,22 @@ export function HeroSection() {
           </div>
         </div>
 
-        <div className="relative mx-auto w-full max-w-md animate-[fade-up_0.6s_ease-out_0.1s_backwards] lg:max-w-none">
-          <div className="relative aspect-square overflow-hidden rounded-3xl bg-slate-100">
-            <Image
-              src="https://images.unsplash.com/photo-1607082349566-187342175e2f?q=80&w=1000&auto=format&fit=crop"
-              alt="Producto destacado"
-              fill
-              sizes="(min-width: 1024px) 40vw, 90vw"
-              className="object-cover"
-              priority
-            />
+        <div className="relative mx-auto w-full max-w-md animate-[fade-up_0.6s_ease-out_0.1s_backwards] lg:max-w-lg">
+          {/* Glow decorativo detrás del producto, sin marco de tarjeta alrededor de la foto */}
+          <div className="absolute inset-8 -z-10 rounded-full bg-gradient-to-br from-blue-100 to-orange-50 blur-2xl" />
+          <div className="relative aspect-square animate-[float_5s_ease-in-out_infinite]">
+            <div className="relative h-full w-full overflow-hidden rounded-full bg-slate-100 shadow-2xl">
+              <Image
+                src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1000&auto=format&fit=crop"
+                alt="Producto destacado"
+                fill
+                sizes="(min-width: 1024px) 40vw, 90vw"
+                className="object-cover"
+                priority
+              />
+            </div>
           </div>
-          <div className="absolute -bottom-5 -left-5 animate-[pop-in_0.4s_ease-out_0.5s_backwards] rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-slate-100">
+          <div className="absolute -bottom-2 -left-2 animate-[pop-in_0.4s_ease-out_0.5s_backwards] rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-slate-100">
             <p className="text-xs font-medium text-slate-500">Hasta</p>
             <p className="text-2xl font-extrabold text-brand">40% OFF</p>
           </div>

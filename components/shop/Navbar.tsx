@@ -6,6 +6,7 @@ import {
   Search,
   ShoppingCart,
   User,
+  UserPlus,
   ChevronDown,
   Menu,
   X,
@@ -57,11 +58,12 @@ export function Navbar({ session }: NavbarProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm">
-      {/* Mini fila superior, al estilo "Soporte / Para Empresas" de Samsung */}
+      {/* Mini fila superior, al estilo "Soporte" de Samsung. El acceso de
+          staff (/admin/login) NO se enlaza aquí a propósito: nunca se
+          anuncia una puerta de administrador en el sitio público. */}
       <div className="hidden border-b border-slate-50 lg:block">
         <div className="mx-auto flex max-w-7xl items-center justify-end gap-5 px-6 py-1.5 text-xs text-slate-500">
           <Link href="/ayuda" className="hover:text-brand">Ayuda</Link>
-          <Link href="/admin/login" className="hover:text-brand">¿Eres vendedor?</Link>
         </div>
       </div>
 
@@ -160,7 +162,8 @@ export function Navbar({ session }: NavbarProps) {
                       <User className="h-4 w-4" />
                       Iniciar sesión
                     </Link>
-                    <Link href="/login?tab=register" className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-brand hover:bg-slate-50">
+                    <Link href="/login?tab=register" className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-brand hover:bg-slate-50">
+                      <UserPlus className="h-4 w-4" />
                       Crear cuenta
                     </Link>
                   </>
@@ -209,9 +212,6 @@ export function Navbar({ session }: NavbarProps) {
           <div className="flex flex-col gap-1 border-t border-slate-100 pt-2">
             <Link href="/ayuda" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
               Ayuda
-            </Link>
-            <Link href="/admin/login" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
-              ¿Eres vendedor o administrador?
             </Link>
             {session ? (
               <>

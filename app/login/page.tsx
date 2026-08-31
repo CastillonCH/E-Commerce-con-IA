@@ -175,13 +175,6 @@ function AuthForm() {
           <p className="mt-5 text-center text-xs text-slate-500">
             Al continuar aceptas nuestros Términos y Política de Privacidad.
           </p>
-
-          <p className="mt-6 text-center text-xs text-slate-500">
-            ¿Eres vendedor o administrador?{" "}
-            <Link href="/admin/login" className="font-medium text-slate-600 hover:text-brand">
-              Ingresa aquí
-            </Link>
-          </p>
         </div>
       </div>
     </div>
