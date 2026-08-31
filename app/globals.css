@@ -1,8 +1,25 @@
 @import "tailwindcss";
 
+/*
+ * Tienda con un único tema (claro), a propósito: como SagaFalabella o
+ * Samsung.com, la identidad visual no cambia con las preferencias de SO del
+ * visitante. `color-scheme: light` evita que el navegador oscurezca por su
+ * cuenta controles nativos (scrollbar, inputs, selects) cuando el sistema
+ * está en modo oscuro.
+ *
+ * Importante: html/body van dentro de `@layer base`, no como CSS suelto.
+ * Tailwind v4 genera sus utilidades dentro de cascade layers; una regla CSS
+ * fuera de cualquier `@layer` tiene MÁS prioridad que cualquier utilidad
+ * (independiente de especificidad), así que un `body { background: ... }`
+ * suelto aquí ganaría incluso a un `bg-slate-50` puesto a mano en el JSX.
+ * Ese fue exactamente el bug: con el sistema en modo oscuro, esa regla
+ * suelta pintaba body casi negro por debajo de texto oscuro pensado para
+ * fondo claro.
+ */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,15 +29,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    background: var(--background);
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
 }

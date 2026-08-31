@@ -56,7 +56,7 @@ export function HeroSection() {
           </div>
           <div className="absolute -bottom-5 -left-5 rounded-2xl bg-white px-4 py-3 shadow-xl">
             <p className="text-xs font-medium text-slate-500">Hasta</p>
-            <p className="text-2xl font-extrabold text-orange-500">40% OFF</p>
+            <p className="text-2xl font-extrabold text-orange-600">40% OFF</p>
           </div>
         </div>
       </div>

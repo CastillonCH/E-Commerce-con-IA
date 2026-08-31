@@ -71,7 +71,7 @@ function LoginForm() {
           </div>
         </div>
 
-        <p className="relative text-xs text-slate-500">
+        <p className="relative text-xs text-slate-400">
           © {new Date().getFullYear()} {APP_CONFIG.storeName}
         </p>
       </div>
@@ -103,7 +103,7 @@ function LoginForm() {
             {isLoading ? "Ingresando..." : "Ingresar"}
           </Button>
 
-          <p className="mt-4 text-center text-xs text-slate-400">
+          <p className="mt-4 text-center text-xs text-slate-500">
             Al continuar aceptas nuestros Términos y Política de Privacidad.
           </p>
         </form>

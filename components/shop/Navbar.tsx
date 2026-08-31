@@ -85,7 +85,7 @@ export function Navbar({ role }: NavbarProps) {
       </div>
 
       {/* Barra principal */}
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-5 sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-5 sm:px-6">
         <button
           type="button"
           onClick={() => setMobileOpen((v) => !v)}
@@ -130,14 +130,14 @@ export function Navbar({ role }: NavbarProps) {
           )}
         </div>
 
-        <form action="/" className="flex min-w-0 flex-1 items-center gap-2">
+        <form action="/" className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto sm:flex-1">
           <div className="flex w-full items-center rounded-lg border border-slate-300 bg-slate-50 px-3 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-600">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
+            <Search className="h-4 w-4 shrink-0 text-slate-500" />
             <input
               type="search"
               name="q"
               placeholder="Buscar productos, marcas y más..."
-              className="w-full bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              className="w-full bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-500"
             />
           </div>
         </form>
@@ -191,7 +191,7 @@ export function Navbar({ role }: NavbarProps) {
           >
             <ShoppingCart className="h-5 w-5" />
             {mounted && totalItems > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[11px] font-semibold text-white">
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[11px] font-semibold text-white ring-2 ring-white">
                 {totalItems}
               </span>
             )}
@@ -221,7 +221,7 @@ export function Navbar({ role }: NavbarProps) {
       {/* Menú móvil */}
       {mobileOpen && (
         <div className="border-t border-slate-100 bg-white px-4 py-3 md:hidden">
-          <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Categorías
           </p>
           <div className="mb-3 grid grid-cols-2 gap-1">

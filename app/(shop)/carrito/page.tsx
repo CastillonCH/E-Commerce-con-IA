@@ -38,7 +38,7 @@ export default function CartPage() {
             <button
               onClick={() => removeItem(product.id)}
               aria-label="Quitar del carrito"
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
             >
               <Trash2 className="h-4 w-4" />
             </button>

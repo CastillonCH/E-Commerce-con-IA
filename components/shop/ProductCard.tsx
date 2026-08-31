@@ -30,7 +30,7 @@ export function ProductCard({ product }: { product: Product }) {
 
         <div className="absolute left-2 top-2 flex flex-col gap-1.5">
           {discount && (
-            <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-white">
+            <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-slate-950">
               -{discount}%
             </span>
           )}
@@ -67,14 +67,14 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="mt-1 flex items-baseline gap-2">
           <p className="text-lg font-bold text-slate-900">{formatCurrency(product.precio)}</p>
           {product.precioOriginal && (
-            <p className="text-xs text-slate-400 line-through">
+            <p className="text-xs text-slate-500 line-through">
               {formatCurrency(product.precioOriginal)}
             </p>
           )}
         </div>
 
         {product.envioGratis && (
-          <p className="flex items-center gap-1 text-xs font-medium text-green-600">
+          <p className="flex items-center gap-1 text-xs font-medium text-green-700">
             <Truck className="h-3.5 w-3.5" />
             Envío gratis
           </p>

@@ -148,7 +148,7 @@ export function AssistantWidget() {
             href={whatsappHref(`Hola, vengo de ${APP_CONFIG.storeName} y necesito ayuda.`)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600"
+            className="flex items-center justify-center gap-2 bg-green-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-800"
           >
             <MessageCircle className="h-4 w-4" />
             Continuar por WhatsApp
