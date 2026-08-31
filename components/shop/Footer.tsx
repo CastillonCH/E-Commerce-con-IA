@@ -62,8 +62,8 @@ export function Footer() {
               Nova<span className="text-brand">Store</span>
             </p>
             <p className="mt-3 text-sm text-slate-500">
-              Miles de productos, clasificados automáticamente por nuestro
-              motor de Inteligencia Artificial.
+              Miles de productos organizados automáticamente para que
+              encuentres justo lo que buscas, en segundos.
             </p>
             <div className="mt-4 flex gap-3">
               <Link href="/" aria-label="Facebook" className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200">
@@ -96,9 +96,13 @@ export function Footer() {
       </div>
 
       <div className="border-t border-slate-100">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:px-6">
           <p>© {new Date().getFullYear()} {APP_CONFIG.storeName}. Todos los derechos reservados.</p>
-          <p>Hecho con IA para clasificar mejor lo que compras.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/" className="hover:text-brand">Términos y condiciones</Link>
+            <Link href="/" className="hover:text-brand">Política de privacidad</Link>
+            <Link href="/" className="hover:text-brand">Libro de reclamaciones</Link>
+          </div>
         </div>
       </div>
     </footer>

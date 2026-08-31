@@ -4,6 +4,7 @@ import { ProductCard } from "@/components/shop/ProductCard";
 interface ProductGridProps {
   q?: string;
   categoria?: string;
+  soloNuevos?: boolean;
 }
 
 /**
@@ -16,7 +17,7 @@ interface ProductGridProps {
  * (fetchProducts ya está implementado en lib/api.ts, apuntando a
  * GET /api/productos vía el cliente axios centralizado).
  */
-export async function ProductGrid({ q, categoria }: ProductGridProps) {
+export async function ProductGrid({ q, categoria, soloNuevos }: ProductGridProps) {
   const products = MOCK_PRODUCTS.filter((product) => {
     const matchesQuery = q
       ? product.nombre.toLowerCase().includes(q.toLowerCase()) ||
@@ -25,7 +26,8 @@ export async function ProductGrid({ q, categoria }: ProductGridProps) {
     const matchesCategoria = categoria
       ? product.departamento === categoria
       : true;
-    return matchesQuery && matchesCategoria;
+    const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
+    return matchesQuery && matchesCategoria && matchesNuevo;
   });
 
   if (products.length === 0) {
@@ -43,8 +45,18 @@ export async function ProductGrid({ q, categoria }: ProductGridProps) {
 
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+      {products.map((product, index) => (
+        // Animación puramente CSS (sin IntersectionObserver): siempre termina
+        // en opacity 1 aunque el JS falle o tarde, a diferencia de una
+        // animación "reveal" dependiente de JS — el catálogo es contenido
+        // comercial principal y no puede arriesgarse a quedar invisible.
+        <div
+          key={product.id}
+          style={{ animationDelay: `${(index % 4) * 70}ms` }}
+          className="animate-[fade-up_0.4s_ease-out_backwards]"
+        >
+          <ProductCard product={product} />
+        </div>
       ))}
     </div>
   );

@@ -4,22 +4,27 @@ import { BenefitsStrip } from "@/components/shop/BenefitsStrip";
 import { ProductGrid } from "@/components/shop/ProductGrid";
 
 interface HomeProps {
-  searchParams: Promise<{ q?: string; categoria?: string }>;
+  searchParams: Promise<{ q?: string; categoria?: string; nuevo?: string }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { q, categoria } = await searchParams;
+  const { q, categoria, nuevo } = await searchParams;
+  const soloNuevos = nuevo === "1";
+
+  const titulo = categoria
+    ? categoria
+    : soloNuevos
+      ? "Recién llegados"
+      : "Productos destacados";
 
   return (
     <>
       <HeroSection />
       <BenefitsStrip />
       <section id="catalogo" className="mx-auto w-full max-w-7xl flex-1 scroll-mt-20 px-4 py-10 sm:px-6">
-        <h2 className="mb-6 text-xl font-semibold text-slate-900">
-          {categoria ? categoria : "Productos destacados"}
-        </h2>
+        <h2 className="mb-6 text-xl font-semibold text-slate-900">{titulo}</h2>
         <Suspense fallback={<ProductGridSkeleton />}>
-          <ProductGrid q={q} categoria={categoria} />
+          <ProductGrid q={q} categoria={categoria} soloNuevos={soloNuevos} />
         </Suspense>
       </section>
     </>
