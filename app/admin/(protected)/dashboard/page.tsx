@@ -1,28 +1,39 @@
 import Link from "next/link";
-import { Package, PackagePlus, TrendingUp, Users } from "lucide-react";
+import { Package, PackagePlus, TrendingUp, Users, Store } from "lucide-react";
 import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { formatCurrency } from "@/lib/utils";
 
 const STATS = [
   { label: "Productos activos", value: MOCK_PRODUCTS.length, icon: Package },
   { label: "Stock total", value: MOCK_PRODUCTS.reduce((sum, p) => sum + p.stock, 0), icon: TrendingUp },
-  { label: "Clientes registrados", value: "—", icon: Users },
+  { label: "Vendedores activos", value: 3, icon: Store },
+  { label: "Ventas del mes", value: formatCurrency(48250), icon: Users },
 ];
 
 export default function AdminDashboardPage() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-        <Link
-          href="/admin/productos/nuevo"
-          className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          <PackagePlus className="h-4 w-4" />
-          Nuevo producto
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/vendedores"
+            className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            <Store className="h-4 w-4" />
+            Ver vendedores
+          </Link>
+          <Link
+            href="/admin/productos/nuevo"
+            className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+          >
+            <PackagePlus className="h-4 w-4" />
+            Nuevo producto
+          </Link>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STATS.map(({ label, value, icon: Icon }) => (
           <div
             key={label}

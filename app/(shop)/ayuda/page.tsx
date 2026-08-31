@@ -18,7 +18,7 @@ export default function HelpPage() {
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {TOPICS.map(({ icon: Icon, title, subtitle }) => (
           <div key={title} className="rounded-xl border border-slate-200 bg-white p-5">
-            <Icon className="mb-3 h-5 w-5 text-blue-600" />
+            <Icon className="mb-3 h-5 w-5 text-brand" />
             <p className="text-sm font-semibold text-slate-900">{title}</p>
             <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
           </div>

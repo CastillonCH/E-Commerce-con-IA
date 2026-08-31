@@ -15,7 +15,7 @@ export default function CartPage() {
     return (
       <div className="mx-auto flex max-w-2xl flex-1 flex-col items-center justify-center gap-3 px-4 py-24 text-center">
         <p className="text-lg font-medium text-slate-900">Tu carrito está vacío</p>
-        <Link href="/" className="text-sm font-medium text-blue-600 hover:underline">
+        <Link href="/" className="text-sm font-medium text-brand hover:underline">
           Volver a la tienda
         </Link>
       </div>
@@ -50,7 +50,7 @@ export default function CartPage() {
         <p className="text-lg font-semibold text-slate-900">
           Total: {formatCurrency(totalPrice)}
         </p>
-        <Button variant="secondary">Ir a pagar</Button>
+        <Button>Ir a pagar</Button>
       </div>
     </div>
   );

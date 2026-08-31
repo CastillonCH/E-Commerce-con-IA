@@ -15,7 +15,7 @@ export function BenefitsStrip() {
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 px-4 py-6 sm:grid-cols-4 sm:px-6">
         {BENEFITS.map(({ icon: Icon, title, subtitle }) => (
           <div key={title} className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-brand">
               <Icon className="h-5 w-5" />
             </div>
             <div>

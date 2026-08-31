@@ -10,7 +10,7 @@ import {
   Menu,
   X,
   LogOut,
-  Package,
+  LayoutDashboard,
   HelpCircle,
   Truck,
   Smartphone,
@@ -22,7 +22,8 @@ import {
   ShoppingBasket,
   type LucideIcon,
 } from "lucide-react";
-import { DEPARTAMENTOS, type Departamento, type UserRole } from "@/types";
+import { DEPARTAMENTOS, type Departamento } from "@/types";
+import type { Session } from "@/lib/auth";
 import { APP_CONFIG } from "@/lib/config";
 import { useCartStore } from "@/store/cart-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
@@ -39,18 +40,18 @@ const DEPARTMENT_ICONS: Record<Departamento, LucideIcon> = {
 };
 
 interface NavbarProps {
-  role: UserRole | null;
+  session: Session | null;
 }
 
 /**
- * Navbar de tres niveles inspirada en grandes tiendas departamentales
- * (SagaFalabella) y en la sobriedad de marca de sitios como Samsung.com:
- * barra de utilidad, barra principal (logo + búsqueda + cuenta + carrito)
- * y una franja de categorías con ícono. `role` viene del layout del lado
- * del servidor (lee la cookie de sesión) para que el estado de login sea
- * correcto en el primer render, sin parpadeos de hidratación.
+ * Navbar de tres niveles: barra de utilidad clara, barra principal (logo +
+ * búsqueda + cuenta + carrito) y una franja de categorías con ícono — la
+ * estructura departamental de SagaFalabella, pero con la paleta minimalista
+ * blanco/negro + azul de marca de Samsung.com. `session` viene del layout
+ * del lado del servidor (lee la cookie de sesión) para que el estado de
+ * login sea correcto en el primer render, sin parpadeos de hidratación.
  */
-export function Navbar({ role }: NavbarProps) {
+export function Navbar({ session }: NavbarProps) {
   const totalItems = useCartStore((state) => state.totalItems());
   const mounted = useHasMounted();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
@@ -58,25 +59,25 @@ export function Navbar({ role }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-white shadow-sm">
+    <header className="sticky top-0 z-40 bg-white">
       {/* Barra de utilidad */}
-      <div className="hidden bg-slate-950 text-slate-300 sm:block">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5 text-xs sm:px-6">
+      <div className="hidden border-b border-slate-100 sm:block">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5 text-xs text-slate-600 sm:px-6">
           <p className="flex items-center gap-1.5">
             <Truck className="h-3.5 w-3.5" />
             Envío gratis desde {APP_CONFIG.freeShippingThreshold} soles · Entregas a todo el Perú
           </p>
           <div className="flex items-center gap-4">
-            <Link href="/ayuda" className="flex items-center gap-1 hover:text-white">
+            <Link href="/ayuda" className="flex items-center gap-1 hover:text-brand">
               <HelpCircle className="h-3.5 w-3.5" />
               Ayuda
             </Link>
-            {role ? (
-              <Link href={role === "ADMIN" ? "/admin/dashboard" : "/perfil"} className="hover:text-white">
-                Mi cuenta
+            {session ? (
+              <Link href="/perfil" className="hover:text-brand">
+                Hola, {session.name.split(" ")[0]}
               </Link>
             ) : (
-              <Link href="/login" className="hover:text-white">
+              <Link href="/login" className="hover:text-brand">
                 Iniciar sesión
               </Link>
             )}
@@ -85,7 +86,7 @@ export function Navbar({ role }: NavbarProps) {
       </div>
 
       {/* Barra principal */}
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-5 sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 sm:flex-nowrap sm:gap-5 sm:px-6">
         <button
           type="button"
           onClick={() => setMobileOpen((v) => !v)}
@@ -97,7 +98,7 @@ export function Navbar({ role }: NavbarProps) {
 
         <Link href="/" className="shrink-0 text-2xl font-extrabold tracking-tight text-slate-900">
           {/* ESPACIO PARA LOGO / NOMBRE DE LA TIENDA */}
-          Nova<span className="text-blue-600">Store</span>
+          Nova<span className="text-brand">Store</span>
         </Link>
 
         <div className="relative hidden md:block">
@@ -105,7 +106,7 @@ export function Navbar({ role }: NavbarProps) {
             type="button"
             onClick={() => setCategoriesOpen((v) => !v)}
             onBlur={() => setTimeout(() => setCategoriesOpen(false), 150)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-full border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-900 hover:border-slate-900"
           >
             <Menu className="h-4 w-4" />
             Categorías
@@ -131,7 +132,7 @@ export function Navbar({ role }: NavbarProps) {
         </div>
 
         <form action="/" className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto sm:flex-1">
-          <div className="flex w-full items-center rounded-lg border border-slate-300 bg-slate-50 px-3 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-600">
+          <div className="flex w-full items-center rounded-full border border-slate-300 bg-slate-50 px-4 focus-within:border-brand focus-within:bg-white focus-within:ring-1 focus-within:ring-brand">
             <Search className="h-4 w-4 shrink-0 text-slate-500" />
             <input
               type="search"
@@ -148,24 +149,39 @@ export function Navbar({ role }: NavbarProps) {
               type="button"
               onClick={() => setAccountOpen((v) => !v)}
               onBlur={() => setTimeout(() => setAccountOpen(false), 150)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
-              <User className="h-5 w-5" />
-              <span className="hidden lg:inline">{role ? "Mi cuenta" : "Iniciar sesión"}</span>
+              {session ? (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
+                  {session.name.charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <User className="h-5 w-5" />
+              )}
+              <span className="hidden lg:inline">
+                {session ? session.name.split(" ")[0] : "Iniciar sesión"}
+              </span>
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", accountOpen && "rotate-180")} />
             </button>
             {accountOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                {role ? (
+              <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                {session ? (
                   <>
+                    <div className="border-b border-slate-100 px-4 py-2.5">
+                      <p className="truncate text-sm font-medium text-slate-900">{session.name}</p>
+                      <p className="truncate text-xs text-slate-500">{session.email}</p>
+                    </div>
                     <Link href="/perfil" className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
                       <User className="h-4 w-4" />
                       Mi Perfil
                     </Link>
-                    {role === "ADMIN" && (
-                      <Link href="/admin/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
-                        <Package className="h-4 w-4" />
-                        Panel admin
+                    {session.role !== "CLIENT" && (
+                      <Link
+                        href={session.role === "ADMIN" ? "/admin/dashboard" : "/admin/productos"}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <LayoutDashboard className="h-4 w-4" />
+                        Panel {session.role === "ADMIN" ? "de administrador" : "de vendedor"}
                       </Link>
                     )}
                     <form action="/api/auth/logout" method="post">
@@ -176,10 +192,15 @@ export function Navbar({ role }: NavbarProps) {
                     </form>
                   </>
                 ) : (
-                  <Link href="/login" className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
-                    <User className="h-4 w-4" />
-                    Iniciar sesión
-                  </Link>
+                  <>
+                    <Link href="/login" className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
+                      <User className="h-4 w-4" />
+                      Iniciar sesión
+                    </Link>
+                    <Link href="/login?tab=register" className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-brand hover:bg-slate-50">
+                      Crear cuenta
+                    </Link>
+                  </>
                 )}
               </div>
             )}
@@ -187,7 +208,7 @@ export function Navbar({ role }: NavbarProps) {
 
           <Link
             href="/carrito"
-            className="relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             <ShoppingCart className="h-5 w-5" />
             {mounted && totalItems > 0 && (
@@ -200,7 +221,7 @@ export function Navbar({ role }: NavbarProps) {
       </div>
 
       {/* Franja de categorías */}
-      <div className="hidden border-t border-slate-100 md:block">
+      <div className="hidden border-b border-slate-100 md:block">
         <div className="mx-auto flex max-w-7xl items-center gap-6 overflow-x-auto px-4 py-2 sm:px-6">
           {DEPARTAMENTOS.map((departamento) => {
             const Icon = DEPARTMENT_ICONS[departamento];
@@ -208,7 +229,7 @@ export function Navbar({ role }: NavbarProps) {
               <Link
                 key={departamento}
                 href={`/?categoria=${departamento}`}
-                className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-blue-600"
+                className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-brand"
               >
                 <Icon className="h-3.5 w-3.5" />
                 {departamento}
@@ -220,7 +241,7 @@ export function Navbar({ role }: NavbarProps) {
 
       {/* Menú móvil */}
       {mobileOpen && (
-        <div className="border-t border-slate-100 bg-white px-4 py-3 md:hidden">
+        <div className="border-b border-slate-100 bg-white px-4 py-3 md:hidden">
           <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Categorías
           </p>
@@ -244,10 +265,25 @@ export function Navbar({ role }: NavbarProps) {
             <Link href="/ayuda" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
               Ayuda
             </Link>
-            {role ? (
-              <Link href="/perfil" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                Mi cuenta
-              </Link>
+            {session ? (
+              <>
+                <Link href="/perfil" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  Hola, {session.name.split(" ")[0]}
+                </Link>
+                {session.role !== "CLIENT" && (
+                  <Link
+                    href={session.role === "ADMIN" ? "/admin/dashboard" : "/admin/productos"}
+                    className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Panel {session.role === "ADMIN" ? "de administrador" : "de vendedor"}
+                  </Link>
+                )}
+                <form action="/api/auth/logout" method="post">
+                  <button type="submit" className="w-full rounded-lg px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                    Cerrar sesión
+                  </button>
+                </form>
+              </>
             ) : (
               <Link href="/login" className="rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
                 Iniciar sesión

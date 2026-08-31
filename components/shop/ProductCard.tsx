@@ -35,7 +35,7 @@ export function ProductCard({ product }: { product: Product }) {
             </span>
           )}
           {product.esNuevo && (
-            <span className="rounded-full bg-blue-600 px-2 py-1 text-xs font-bold text-white">
+            <span className="rounded-full bg-brand px-2 py-1 text-xs font-bold text-white">
               Nuevo
             </span>
           )}

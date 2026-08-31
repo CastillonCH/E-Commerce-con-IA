@@ -1,31 +1,38 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, encodeSession, sessionCookieOptions } from "@/lib/auth";
 
 /**
- * Stub de autenticación SOLO para desarrollo del frontend. Acepta cualquier
- * credencial y asigna el rol según a dónde intentaba entrar el usuario
- * (`/admin/...` -> ADMIN, cualquier otra ruta -> CLIENT).
+ * Login de CLIENTES (correo). Es un stub SOLO para desarrollo del frontend:
+ * acepta cualquier contraseña y no persiste nada.
  *
  * TODO(backend): reemplazar por un POST a `${APP_CONFIG.apiUrl}/api/auth/login`
- * en FastAPI, que debe validar credenciales reales y devolver un JWT con el
- * rol del usuario. Ese token debe guardarse en una cookie httpOnly firmada y
- * verificarse en `proxy.ts`, no confiar en un valor plano como aquí.
+ * en FastAPI que valide credenciales reales contra la base de datos y
+ * devuelva un JWT. Ese token debe guardarse en una cookie httpOnly firmada
+ * y verificarse en `proxy.ts`, no confiar en JSON plano como aquí.
+ *
+ * El staff (vendedor/administrador) NO usa este endpoint — ver
+ * /api/auth/staff-login, que no está enlazado desde la tienda pública.
  */
 export async function POST(request: Request) {
-  const { email, from } = await request.json();
+  const { email, password } = await request.json();
 
-  if (!email) {
-    return NextResponse.json({ detail: "Email requerido" }, { status: 400 });
+  if (!email || !password) {
+    return NextResponse.json(
+      { detail: "Email y contraseña son obligatorios" },
+      { status: 400 }
+    );
   }
 
-  const role = typeof from === "string" && from.startsWith("/admin") ? "ADMIN" : "CLIENT";
-
-  const response = NextResponse.json({ success: true, role });
-  response.cookies.set(SESSION_COOKIE, role, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(
+    SESSION_COOKIE,
+    encodeSession({
+      role: "CLIENT",
+      name: email.split("@")[0],
+      email,
+      provider: "credentials",
+    }),
+    sessionCookieOptions()
+  );
   return response;
 }

@@ -4,7 +4,7 @@
  * entre contratos.
  */
 
-export type UserRole = "ADMIN" | "CLIENT";
+export type UserRole = "ADMIN" | "SELLER" | "CLIENT";
 
 export interface User {
   id: string;

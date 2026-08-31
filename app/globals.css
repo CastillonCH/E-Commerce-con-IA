@@ -19,12 +19,18 @@
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
+  /* "Samsung Blue", el azul de marca oficial de Samsung — único acento de
+     color sobre una base blanco/negro, igual que su propio sistema visual. */
+  --color-brand: #1428a0;
+  --color-brand-hover: #0f1f7a;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--color-brand);
+  --color-brand-hover: var(--color-brand-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

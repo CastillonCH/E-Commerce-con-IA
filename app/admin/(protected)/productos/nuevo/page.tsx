@@ -123,7 +123,7 @@ export default function AdminNewProductPage() {
           />
         </div>
 
-        <Button type="submit" disabled={isAnalyzing} className="mt-2">
+        <Button type="submit" variant="dark" disabled={isAnalyzing} className="mt-2">
           {isAnalyzing ? "Analizando..." : "Guardar producto"}
         </Button>
       </form>
