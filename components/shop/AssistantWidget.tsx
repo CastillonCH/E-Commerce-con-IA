@@ -86,10 +86,38 @@ export function AssistantWidget() {
   const [activeTopic, setActiveTopic] = useState<SupportTopic | null>(null);
   const [showTeaser, setShowTeaser] = useState(false);
 
+  // La burbuja de sugerencia no debe quedarse fija: con el chat cerrado,
+  // aparece, se retira sola a los pocos segundos (para no tapar productos o
+  // descripciones si el usuario no la cierra) y vuelve a asomar cada cierto
+  // tiempo, en vez de permanecer en pantalla todo el rato.
   useEffect(() => {
-    const timer = setTimeout(() => setShowTeaser(true), 4000);
-    return () => clearTimeout(timer);
-  }, []);
+    // Mientras el chat está abierto no hace falta programar nada: la burbuja
+    // ya está oculta en el render (`!open && showTeaser` más abajo).
+    if (open) return;
+
+    const FIRST_APPEARANCE = 4000;
+    const VISIBLE_DURATION = 8000;
+    const REAPPEAR_EVERY = 45000;
+
+    let hideTimer: ReturnType<typeof setTimeout>;
+    let repeatTimer: ReturnType<typeof setInterval>;
+
+    function showTeaserBriefly() {
+      setShowTeaser(true);
+      hideTimer = setTimeout(() => setShowTeaser(false), VISIBLE_DURATION);
+    }
+
+    const firstTimer = setTimeout(() => {
+      showTeaserBriefly();
+      repeatTimer = setInterval(showTeaserBriefly, REAPPEAR_EVERY);
+    }, FIRST_APPEARANCE);
+
+    return () => {
+      clearTimeout(firstTimer);
+      clearTimeout(hideTimer);
+      clearInterval(repeatTimer);
+    };
+  }, [open]);
 
   function handleSelectTopic(topic: SupportTopic) {
     // TODO(backend): si en el futuro se agregan respuestas generadas por IA

@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { GoogleIcon } from "@/components/shop/GoogleIcon";
@@ -65,7 +65,14 @@ function AuthForm() {
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <div className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6">
+      <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 pt-6 sm:px-6">
+        <Link
+          href="/"
+          aria-label="Volver a la tienda"
+          className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
         <Link href="/" className="text-2xl font-extrabold tracking-tight text-slate-900">
           Nova<span className="text-brand">Store</span>
         </Link>
