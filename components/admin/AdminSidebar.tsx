@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PackagePlus, Package, Users, LogOut } from "lucide-react";
+import { LayoutDashboard, PackagePlus, Package, Users, ClipboardList, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_CONFIG } from "@/lib/config";
 import type { Session } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+  { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList, adminOnly: true },
+  { href: "/admin/clientes", label: "Clientes", icon: Users, adminOnly: true },
   { href: "/admin/vendedores", label: "Vendedores", icon: Users, adminOnly: true },
   { href: "/admin/productos/nuevo", label: "Nuevo producto", icon: PackagePlus, adminOnly: false },
   { href: "/admin/productos", label: "Productos", icon: Package, adminOnly: false },

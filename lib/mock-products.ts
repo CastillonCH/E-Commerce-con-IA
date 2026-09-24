@@ -20,6 +20,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.6,
     numResenas: 328,
     envioGratis: true,
+    descripcion:
+      "Audífonos inalámbricos con cancelación activa de ruido, hasta 30 horas de batería con el estuche de carga y sonido de alta fidelidad ajustado para graves profundos. Ideales para música, llamadas y uso diario en la calle o la oficina.",
   },
   {
     id: "2",
@@ -33,6 +35,8 @@ export const MOCK_PRODUCTS: Product[] = [
     categoria_ia: "kitchen_appliance",
     rating: 4.3,
     numResenas: 94,
+    descripcion:
+      "Licuadora de 1200W con vaso de vidrio resistente de 1.8L, 3 velocidades más función pulso y cuchillas de acero inoxidable. Pensada para batidos, jugos y preparaciones espesas sin esfuerzo.",
   },
   {
     id: "3",
@@ -49,6 +53,8 @@ export const MOCK_PRODUCTS: Product[] = [
     numResenas: 156,
     envioGratis: true,
     esNuevo: true,
+    descripcion:
+      "Chaqueta impermeable con costuras selladas, forro térmico ligero y capucha ajustable. Diseñada para uso urbano todo el año, resiste lluvia y viento sin perder estilo.",
   },
   {
     id: "4",
@@ -62,6 +68,8 @@ export const MOCK_PRODUCTS: Product[] = [
     categoria_ia: "sports_ball",
     rating: 4.5,
     numResenas: 210,
+    descripcion:
+      "Balón de fútbol de competición, costura termosellada y cámara de látex de alta retención de aire. Aprobado para uso en césped natural y sintético.",
   },
   {
     id: "5",
@@ -77,6 +85,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.7,
     numResenas: 412,
     envioGratis: true,
+    descripcion:
+      "Set de 12 brochas profesionales con cerdas suaves sintéticas, libres de crueldad animal, y estuche de viaje incluido. Cubre rostro y ojos para un maquillaje de acabado uniforme.",
   },
   {
     id: "6",
@@ -91,6 +101,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.4,
     numResenas: 87,
     esNuevo: true,
+    descripcion:
+      "Smartwatch con GPS integrado, monitoreo de ritmo cardíaco 24/7, más de 20 modos deportivos y resistencia al agua 5ATM. Batería de hasta 7 días con notificaciones inteligentes.",
   },
   {
     id: "7",
@@ -105,6 +117,8 @@ export const MOCK_PRODUCTS: Product[] = [
     categoria_ia: "kitchen_appliance",
     rating: 4.2,
     numResenas: 63,
+    descripcion:
+      "Cafetera automática programable con depósito de 1.5L, filtro permanente reutilizable y placa térmica que mantiene la temperatura. Prepara hasta 12 tazas por ciclo.",
   },
   {
     id: "8",
@@ -119,6 +133,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.6,
     numResenas: 275,
     envioGratis: true,
+    descripcion:
+      "Zapatillas running con entresuela de espuma ligera y malla transpirable. Diseñadas para amortiguar el impacto en trotes diarios y entrenamientos largos.",
   },
   {
     id: "9",
@@ -134,6 +150,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.9,
     numResenas: 501,
     envioGratis: true,
+    descripcion:
+      "Eau de parfum de larga duración con notas florales y amaderadas. Frasco de 100ml, ideal para uso diario o en ocasiones especiales.",
   },
   {
     id: "10",
@@ -148,6 +166,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.7,
     numResenas: 132,
     esNuevo: true,
+    descripcion:
+      "Set de 350 piezas de bloques de construcción compatibles con las principales marcas del mercado. Estimula la creatividad y motricidad fina, para niños desde 6 años.",
   },
   {
     id: "11",
@@ -163,6 +183,8 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.5,
     numResenas: 58,
     envioGratis: true,
+    descripcion:
+      "Laptop ultradelgada de 14'' con procesador de última generación, 16GB de RAM y SSD de 512GB. Pantalla de bordes reducidos y batería de todo el día para trabajo y estudio.",
   },
   {
     id: "12",
@@ -177,5 +199,7 @@ export const MOCK_PRODUCTS: Product[] = [
     rating: 4.3,
     numResenas: 76,
     envioGratis: true,
+    descripcion:
+      "Canasta con productos básicos de abarrotes para el hogar: arroz, aceite, azúcar, fideos y más. Pensada para abastecer a una familia durante la semana.",
   },
 ];

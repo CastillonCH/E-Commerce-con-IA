@@ -57,3 +57,35 @@ export async function createProduct(
   );
   return data;
 }
+
+/** Payload para editar un producto existente. La imagen es opcional: si no se reemplaza, el backend conserva la actual. */
+export interface UpdateProductInput {
+  nombre: string;
+  precio: number;
+  stock: number;
+  marca: string;
+  departamento: NewProductInput["departamento"];
+  imagen?: File;
+}
+
+export async function updateProduct(
+  id: string,
+  input: UpdateProductInput
+): Promise<Product> {
+  const formData = new FormData();
+  formData.append("nombre", input.nombre);
+  formData.append("precio", String(input.precio));
+  formData.append("stock", String(input.stock));
+  formData.append("marca", input.marca);
+  formData.append("departamento", input.departamento);
+  if (input.imagen) formData.append("imagen", input.imagen);
+
+  const { data } = await api.put<Product>(`/api/productos/${id}`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  await api.delete(`/api/productos/${id}`);
+}

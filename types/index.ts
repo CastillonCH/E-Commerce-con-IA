@@ -43,6 +43,8 @@ export interface Product {
   numResenas?: number;
   envioGratis?: boolean;
   esNuevo?: boolean;
+  /** Descripción larga para la página de detalle del producto. */
+  descripcion?: string;
 }
 
 /** Respuesta del motor de IA al clasificar la imagen de un producto nuevo. */
@@ -71,6 +73,43 @@ export interface CreateProductResponse {
 export interface CartItem {
   product: Product;
   cantidad: number;
+}
+
+/** Dirección de envío. Simplificada para Perú (sin dividir en departamento/provincia/distrito todavía). */
+export interface ShippingAddress {
+  nombre: string;
+  direccion: string;
+  ciudad: string;
+  telefono: string;
+}
+
+export type OrderStatus = "pendiente" | "en_camino" | "entregado" | "cancelado";
+
+export type PaymentMethod = "tarjeta" | "yape_plin" | "contraentrega";
+
+export interface OrderItem {
+  productId: string;
+  nombre: string;
+  imagen_url: string;
+  precio: number;
+  cantidad: number;
+}
+
+/**
+ * Pedido. Hoy se genera y persiste solo en el navegador (ver
+ * store/orders-store.ts); cuando exista `POST /api/pedidos` en el backend,
+ * esta es la forma exacta que debe devolver.
+ */
+export interface Order {
+  id: string;
+  fecha: string;
+  clienteNombre: string;
+  clienteEmail: string;
+  direccion: ShippingAddress;
+  metodoPago: PaymentMethod;
+  items: OrderItem[];
+  total: number;
+  estado: OrderStatus;
 }
 
 /** Forma estándar de error que devuelve FastAPI (HTTPException). */

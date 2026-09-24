@@ -27,7 +27,7 @@ export function DepartmentMegaMenu({ departamento }: { departamento: Departament
             {featured.map((product) => (
               <Link
                 key={product.id}
-                href={verTodoHref}
+                href={`/productos/${product.id}`}
                 className="group/item flex w-20 flex-col items-center gap-2 rounded-xl p-1.5 text-center transition-colors hover:bg-slate-50"
               >
                 <div className="relative h-16 w-16 overflow-hidden rounded-full bg-slate-100 transition-transform duration-200 group-hover/item:scale-105">

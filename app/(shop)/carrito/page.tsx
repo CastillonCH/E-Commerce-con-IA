@@ -50,7 +50,9 @@ export default function CartPage() {
         <p className="text-lg font-semibold text-slate-900">
           Total: {formatCurrency(totalPrice)}
         </p>
-        <Button>Ir a pagar</Button>
+        <Link href="/checkout">
+          <Button>Ir a pagar</Button>
+        </Link>
       </div>
     </div>
   );

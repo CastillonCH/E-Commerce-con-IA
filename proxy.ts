@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, readSession, canManageProducts } from "@/lib/auth";
 
-const ADMIN_ONLY_PATHS = ["/admin/dashboard", "/admin/vendedores"];
+const ADMIN_ONLY_PATHS = [
+  "/admin/dashboard",
+  "/admin/vendedores",
+  "/admin/clientes",
+  "/admin/pedidos",
+];
 
 /**
  * Protege /admin a nivel de servidor (Next.js 16 renombró `middleware.ts` a

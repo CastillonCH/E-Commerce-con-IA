@@ -4,9 +4,9 @@ import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
 
 const SECTIONS = [
-  { icon: Package, title: "Mis pedidos", subtitle: "Revisa el estado de tus compras" },
-  { icon: MapPin, title: "Direcciones", subtitle: "Administra tus direcciones de envío" },
-  { icon: Bot, title: "Asistente virtual", subtitle: "Habla con nuestro asistente o por WhatsApp" },
+  { icon: Package, title: "Mis pedidos", subtitle: "Revisa el estado de tus compras", href: "/perfil/pedidos" },
+  { icon: MapPin, title: "Direcciones", subtitle: "Administra tus direcciones de envío", href: null },
+  { icon: Bot, title: "Asistente virtual", subtitle: "Habla con nuestro asistente o por WhatsApp", href: null },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -50,13 +50,31 @@ export default async function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {SECTIONS.map(({ icon: Icon, title, subtitle }) => (
-          <div key={title} className="rounded-xl border border-slate-200 bg-white p-5">
-            <Icon className="mb-3 h-5 w-5 text-brand" />
-            <p className="text-sm font-semibold text-slate-900">{title}</p>
-            <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
-          </div>
-        ))}
+        {SECTIONS.map(({ icon: Icon, title, subtitle, href }) => {
+          const content = (
+            <>
+              <Icon className="mb-3 h-5 w-5 text-brand" />
+              <p className="text-sm font-semibold text-slate-900">{title}</p>
+              <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+            </>
+          );
+          if (href) {
+            return (
+              <Link
+                key={title}
+                href={href}
+                className="rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                {content}
+              </Link>
+            );
+          }
+          return (
+            <div key={title} className="rounded-xl border border-slate-200 bg-white p-5">
+              {content}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
