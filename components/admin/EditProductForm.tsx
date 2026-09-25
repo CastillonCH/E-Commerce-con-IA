@@ -19,7 +19,9 @@ const editSchema = z.object({
   precio: z.coerce.number().positive("El precio debe ser mayor a 0"),
   stock: z.coerce.number().int().nonnegative("El stock no puede ser negativo"),
   marca: z.string().trim().min(2, "La marca es obligatoria"),
-  departamento: z.enum(DEPARTAMENTOS, { message: "Selecciona un departamento" }),
+  departamento: z.enum(DEPARTAMENTOS, {
+    message: "Selecciona un departamento",
+  }),
   imagen: z.instanceof(File).optional(),
 });
 
@@ -61,7 +63,9 @@ export function EditProductForm({ product }: { product: Product }) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Editar producto</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-slate-900">
+        Editar producto
+      </h1>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         <div>
@@ -73,7 +77,13 @@ export function EditProductForm({ product }: { product: Product }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="precio">Precio</Label>
-            <Input id="precio" type="number" step="0.01" min="0" {...register("precio")} />
+            <Input
+              id="precio"
+              type="number"
+              step="0.01"
+              min="0"
+              {...register("precio")}
+            />
             <FieldError message={errors.precio?.message} />
           </div>
           <div>
@@ -91,7 +101,11 @@ export function EditProductForm({ product }: { product: Product }) {
 
         <div>
           <Label htmlFor="departamento">Departamento</Label>
-          <Select id="departamento" defaultValue={product.departamento} {...register("departamento")}>
+          <Select
+            id="departamento"
+            defaultValue={product.departamento}
+            {...register("departamento")}
+          >
             {DEPARTAMENTOS.map((departamento) => (
               <option key={departamento} value={departamento}>
                 {departamento}
@@ -105,7 +119,13 @@ export function EditProductForm({ product }: { product: Product }) {
           <Label htmlFor="imagen">Foto del producto</Label>
           <div className="mb-3 flex items-center gap-3">
             <div className="relative h-16 w-16 overflow-hidden rounded-lg bg-slate-100">
-              <Image src={product.imagen_url} alt={product.nombre} fill sizes="64px" className="object-cover" />
+              <Image
+                src={product.imagen_url}
+                alt={product.nombre}
+                fill
+                sizes="64px"
+                className="object-cover"
+              />
             </div>
             <p className="text-xs text-slate-500">
               Imagen actual. Sube una nueva solo si quieres reemplazarla.
@@ -134,7 +154,11 @@ export function EditProductForm({ product }: { product: Product }) {
               "Guardar cambios"
             )}
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.push("/admin/productos")}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/admin/productos")}
+          >
             Cancelar
           </Button>
         </div>

@@ -13,14 +13,11 @@ interface ProductCarouselProps {
   viewAllHref?: string;
 }
 
-/**
- * Carrusel horizontal con scroll-snap nativo (sin librería nueva): cada
- * tarjeta ocupa un ancho fijo y `scroll-snap-type` la alinea al soltar el
- * scroll. Las flechas solo desplazan el contenedor con `scrollBy` — no hay
- * estado de "página actual" que pueda desincronizarse de un swipe manual en
- * móvil, que sigue funcionando igual con o sin JS.
- */
-export function ProductCarousel({ title, products, viewAllHref }: ProductCarouselProps) {
+export function ProductCarousel({
+  title,
+  products,
+  viewAllHref,
+}: ProductCarouselProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -63,7 +60,7 @@ export function ProductCarousel({ title, products, viewAllHref }: ProductCarouse
               aria-label="Anterior"
               className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 transition-colors hover:border-slate-900 hover:bg-slate-50",
-                "disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-300 disabled:hover:bg-transparent"
+                "disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-300 disabled:hover:bg-transparent",
               )}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -75,7 +72,7 @@ export function ProductCarousel({ title, products, viewAllHref }: ProductCarouse
               aria-label="Siguiente"
               className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 transition-colors hover:border-slate-900 hover:bg-slate-50",
-                "disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-300 disabled:hover:bg-transparent"
+                "disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-300 disabled:hover:bg-transparent",
               )}
             >
               <ChevronRight className="h-4 w-4" />

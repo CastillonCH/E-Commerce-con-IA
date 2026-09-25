@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { SESSION_COOKIE, encodeSession, sessionCookieOptions } from "@/lib/auth";
+import {
+  SESSION_COOKIE,
+  encodeSession,
+  sessionCookieOptions,
+} from "@/lib/auth";
 import { CSRF_COOKIE } from "@/app/api/auth/google/route";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -21,7 +25,6 @@ function redirectWithError(origin: string) {
   return NextResponse.redirect(loginUrl);
 }
 
-/** Intercambia el `code` por tokens y arma la sesión. Ver TODOs en /api/auth/google/route.ts. */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -77,7 +80,7 @@ export async function GET(request: Request) {
       email: profile.email,
       provider: "google",
     }),
-    sessionCookieOptions()
+    sessionCookieOptions(),
   );
   response.cookies.delete(CSRF_COOKIE);
   return response;

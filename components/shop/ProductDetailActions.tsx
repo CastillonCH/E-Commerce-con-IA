@@ -51,11 +51,18 @@ export function ProductDetailActions({ product }: { product: Product }) {
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
-        <span className="text-xs text-slate-500">{product.stock} disponibles</span>
+        <span className="text-xs text-slate-500">
+          {product.stock} disponibles
+        </span>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button onClick={addToCart} disabled={agotado} variant="outline" className="flex-1">
+        <Button
+          onClick={addToCart}
+          disabled={agotado}
+          variant="outline"
+          className="flex-1"
+        >
           <ShoppingCart className="h-4 w-4" />
           Añadir al carrito
         </Button>

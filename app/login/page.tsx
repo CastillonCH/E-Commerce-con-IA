@@ -10,31 +10,26 @@ import { GoogleIcon } from "@/components/shop/GoogleIcon";
 import { cn } from "@/lib/utils";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  google_failed: "No se pudo completar el ingreso con Google. Intenta de nuevo.",
+  google_failed:
+    "No se pudo completar el ingreso con Google. Intenta de nuevo.",
   google_not_configured:
     "El ingreso con Google todavía no está configurado en este entorno.",
 };
 
-/**
- * Login/registro de CLIENTES (Google + correo). El staff (vendedor y
- * administrador) usa /admin/login, que no está enlazado desde aquí — ver
- * el TODO ahí sobre por qué el rol nunca debe elegirse en un formulario
- * público.
- */
 function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get("from") ?? "/";
   const errorCode = searchParams.get("error");
   const [tab, setTab] = useState<"login" | "register">(
-    searchParams.get("tab") === "register" ? "register" : "login"
+    searchParams.get("tab") === "register" ? "register" : "login",
   );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(
-    errorCode ? ERROR_MESSAGES[errorCode] ?? null : null
+    errorCode ? (ERROR_MESSAGES[errorCode] ?? null) : null,
   );
 
   async function handleSubmit(event: FormEvent) {
@@ -43,7 +38,8 @@ function AuthForm() {
     setError(null);
 
     const endpoint = tab === "login" ? "/api/auth/login" : "/api/auth/register";
-    const body = tab === "login" ? { email, password } : { name, email, password };
+    const body =
+      tab === "login" ? { email, password } : { name, email, password };
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -73,16 +69,14 @@ function AuthForm() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <Link href="/" className="text-2xl font-extrabold tracking-tight text-slate-900">
+        <Link
+          href="/"
+          className="text-2xl font-extrabold tracking-tight text-slate-900"
+        >
           Nova<span className="text-brand">Store</span>
         </Link>
       </div>
 
-      {/* pt-fijo en vez de centrado vertical: si el formulario se centrara
-          en el alto disponible, cambiar de pestaña (login <-> registro
-          cambia cuántos campos hay) desplazaría todo el bloque de golpe,
-          incluidas las pestañas y el logo de arriba. Con un ancla fija
-          arriba, solo se mueve el espacio vacío debajo, invisible. */}
       <div className="flex flex-1 justify-center px-4 pt-12 pb-10 sm:pt-20">
         <div className="w-full max-w-sm">
           <div className="mb-6 flex rounded-full bg-slate-100 p-1">
@@ -91,7 +85,9 @@ function AuthForm() {
               onClick={() => setTab("login")}
               className={cn(
                 "flex-1 rounded-full py-2 text-sm font-semibold transition-colors",
-                tab === "login" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                tab === "login"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500",
               )}
             >
               Iniciar sesión
@@ -101,7 +97,9 @@ function AuthForm() {
               onClick={() => setTab("register")}
               className={cn(
                 "flex-1 rounded-full py-2 text-sm font-semibold transition-colors",
-                tab === "register" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                tab === "register"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500",
               )}
             >
               Crear cuenta

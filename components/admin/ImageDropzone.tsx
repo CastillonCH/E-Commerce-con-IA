@@ -10,7 +10,6 @@ interface ImageDropzoneProps {
   error?: string;
 }
 
-/** Zona de drag & drop para la foto del producto que el backend pasará por la red neuronal. */
 export function ImageDropzone({ onFileSelected, error }: ImageDropzoneProps) {
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -56,7 +55,7 @@ export function ImageDropzone({ onFileSelected, error }: ImageDropzoneProps) {
         {preview ? (
           <>
             <div className="relative h-32 w-32 overflow-hidden rounded-lg">
-              {/* eslint-disable-next-line @next/next/no-img-element -- preview local vía blob: URL, next/image no la optimiza */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={preview}
                 alt="Vista previa del producto"

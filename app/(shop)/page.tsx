@@ -12,12 +12,12 @@ interface HomeProps {
 export default async function Home({ searchParams }: HomeProps) {
   const { q, categoria, nuevo } = await searchParams;
   const soloNuevos = nuevo === "1";
-  // Los carruseles son una vitrina de portada: solo tienen sentido cuando no
-  // hay búsqueda ni filtro activo, para no competir con resultados que el
-  // usuario pidió explícitamente.
+
   const mostrarVitrina = !q && !categoria && !soloNuevos;
 
-  const ofertas = MOCK_PRODUCTS.filter((p) => p.precioOriginal && p.precioOriginal > p.precio);
+  const ofertas = MOCK_PRODUCTS.filter(
+    (p) => p.precioOriginal && p.precioOriginal > p.precio,
+  );
   const nuevos = MOCK_PRODUCTS.filter((p) => p.esNuevo);
 
   const titulo = categoria
@@ -33,12 +33,23 @@ export default async function Home({ searchParams }: HomeProps) {
 
       {mostrarVitrina && (
         <>
-          <ProductCarousel title="Ofertas destacadas" products={ofertas} viewAllHref="/#catalogo" />
-          <ProductCarousel title="Recién llegados" products={nuevos} viewAllHref="/?nuevo=1" />
+          <ProductCarousel
+            title="Ofertas destacadas"
+            products={ofertas}
+            viewAllHref="/#catalogo"
+          />
+          <ProductCarousel
+            title="Recién llegados"
+            products={nuevos}
+            viewAllHref="/?nuevo=1"
+          />
         </>
       )}
 
-      <section id="catalogo" className="mx-auto w-full max-w-7xl flex-1 scroll-mt-20 px-4 py-10 sm:px-6">
+      <section
+        id="catalogo"
+        className="mx-auto w-full max-w-7xl flex-1 scroll-mt-20 px-4 py-10 sm:px-6"
+      >
         <h2 className="mb-6 text-xl font-semibold text-slate-900">{titulo}</h2>
         <Suspense fallback={<ProductGridSkeleton />}>
           <ProductGrid q={q} categoria={categoria} soloNuevos={soloNuevos} />

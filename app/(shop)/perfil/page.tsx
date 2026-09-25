@@ -4,9 +4,24 @@ import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
 
 const SECTIONS = [
-  { icon: Package, title: "Mis pedidos", subtitle: "Revisa el estado de tus compras", href: "/perfil/pedidos" },
-  { icon: MapPin, title: "Direcciones", subtitle: "Administra tus direcciones de envío", href: null },
-  { icon: Bot, title: "Asistente virtual", subtitle: "Habla con nuestro asistente o por WhatsApp", href: null },
+  {
+    icon: Package,
+    title: "Mis pedidos",
+    subtitle: "Revisa el estado de tus compras",
+    href: "/perfil/pedidos",
+  },
+  {
+    icon: MapPin,
+    title: "Direcciones",
+    subtitle: "Administra tus direcciones de envío",
+    href: null,
+  },
+  {
+    icon: Bot,
+    title: "Asistente virtual",
+    subtitle: "Habla con nuestro asistente o por WhatsApp",
+    href: null,
+  },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -15,19 +30,18 @@ const ROLE_LABEL: Record<string, string> = {
   CLIENT: "Cliente",
 };
 
-/**
- * Cuando exista `GET /api/usuarios/me` en el backend, esta página debe
- * consumirlo y mostrar los datos reales de `User` (types/index.ts) en vez
- * de solo lo que hay en la cookie de sesión.
- */
 export default async function ProfilePage() {
   const session = await getSession();
 
   if (!session) {
     return (
       <div className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-4 py-24 text-center">
-        <p className="text-lg font-medium text-slate-900">Aún no iniciaste sesión</p>
-        <p className="text-sm text-slate-500">Ingresa para ver tu perfil, pedidos y direcciones.</p>
+        <p className="text-lg font-medium text-slate-900">
+          Aún no iniciaste sesión
+        </p>
+        <p className="text-sm text-slate-500">
+          Ingresa para ver tu perfil, pedidos y direcciones.
+        </p>
         <Link href="/login?from=/perfil">
           <Button className="mt-2">Iniciar sesión</Button>
         </Link>
@@ -42,7 +56,9 @@ export default async function ProfilePage() {
           {session.name.charAt(0).toUpperCase()}
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">{session.name}</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            {session.name}
+          </h1>
           <p className="text-sm text-slate-500">
             {session.email} · {ROLE_LABEL[session.role]}
           </p>
@@ -70,7 +86,10 @@ export default async function ProfilePage() {
             );
           }
           return (
-            <div key={title} className="rounded-xl border border-slate-200 bg-white p-5">
+            <div
+              key={title}
+              className="rounded-xl border border-slate-200 bg-white p-5"
+            >
               {content}
             </div>
           );

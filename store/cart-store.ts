@@ -11,10 +11,6 @@ interface CartState {
   totalPrice: () => number;
 }
 
-/**
- * Estado global del carrito. Persistido en localStorage para que sobreviva
- * a recargas de página sin necesitar backend todavía.
- */
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -22,14 +18,14 @@ export const useCartStore = create<CartState>()(
       addItem: (product) =>
         set((state) => {
           const existing = state.items.find(
-            (item) => item.product.id === product.id
+            (item) => item.product.id === product.id,
           );
           if (existing) {
             return {
               items: state.items.map((item) =>
                 item.product.id === product.id
                   ? { ...item, cantidad: item.cantidad + 1 }
-                  : item
+                  : item,
               ),
             };
           }
@@ -45,9 +41,9 @@ export const useCartStore = create<CartState>()(
       totalPrice: () =>
         get().items.reduce(
           (sum, item) => sum + item.product.precio * item.cantidad,
-          0
+          0,
         ),
     }),
-    { name: "cart-storage" }
-  )
+    { name: "cart-storage" },
+  ),
 );

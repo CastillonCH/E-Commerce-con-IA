@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Sparkles } from "lucide-react";
 
-/** Hero claro y minimalista, en la línea de Samsung.com: fondo degradado suave, tipografía enorme, un único acento de color. */
 export function HeroSection() {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-white">
@@ -19,9 +18,9 @@ export function HeroSection() {
             </span>
           </h1>
           <p className="animate-[fade-up_0.5s_ease-out_0.16s_backwards] max-w-md text-base text-slate-600 sm:text-lg">
-            Miles de productos organizados automáticamente por nuestro motor
-            de IA. Envío rápido, pago seguro y un asistente virtual listo
-            para ayudarte 24/7.
+            Miles de productos organizados automáticamente por nuestro motor de
+            IA. Envío rápido, pago seguro y un asistente virtual listo para
+            ayudarte 24/7.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-5 animate-[fade-up_0.5s_ease-out_0.24s_backwards]">
             <Link
@@ -41,7 +40,6 @@ export function HeroSection() {
         </div>
 
         <div className="relative mx-auto w-full max-w-md animate-[fade-up_0.6s_ease-out_0.1s_backwards] lg:max-w-lg">
-          {/* Glow decorativo detrás del producto, sin marco de tarjeta alrededor de la foto */}
           <div className="absolute inset-8 -z-10 rounded-full bg-gradient-to-br from-blue-100 to-orange-50 blur-2xl" />
           <div className="relative aspect-square animate-[float_5s_ease-in-out_infinite]">
             <div className="relative h-full w-full overflow-hidden rounded-full bg-slate-100 shadow-2xl">

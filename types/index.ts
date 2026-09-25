@@ -1,9 +1,3 @@
-/**
- * Tipos compartidos del frontend. Deben reflejar exactamente los esquemas
- * (Pydantic) que expondrá el backend en FastAPI para evitar desincronización
- * entre contratos.
- */
-
 export type UserRole = "ADMIN" | "SELLER" | "CLIENT";
 
 export interface User {
@@ -13,9 +7,8 @@ export interface User {
   rol: UserRole;
 }
 
-/** Departamentos soportados por el catálogo. Debe reflejar el enum del backend. */
 export const DEPARTAMENTOS = [
-  "Electronica",
+  "Electrónica",
   "Hogar",
   "Moda",
   "Deportes",
@@ -26,6 +19,20 @@ export const DEPARTAMENTOS = [
 
 export type Departamento = (typeof DEPARTAMENTOS)[number];
 
+export const CATEGORIAS_IA: Record<Departamento, readonly string[]> = {
+  Electrónica: [
+    "Audio y audífonos",
+    "Laptops y computadoras",
+    "Relojes inteligentes y wearables",
+  ],
+  Hogar: ["Electrodomésticos de cocina", "Muebles", "Decoración y menaje"],
+  Moda: ["Casacas y abrigos", "Zapatillas y calzado", "Polos y camisas"],
+  Deportes: ["Balones", "Ropa deportiva", "Equipos de fitness"],
+  Belleza: ["Fragancias", "Maquillaje", "Herramientas de belleza"],
+  Juguetes: ["Bloques de construcción", "Peluches", "Vehículos de juguete"],
+  Supermercado: ["Bebidas", "Abarrotes y snacks", "Limpieza del hogar"],
+};
+
 export interface Product {
   id: string;
   nombre: string;
@@ -34,27 +41,21 @@ export interface Product {
   marca: string;
   departamento: Departamento;
   imagen_url: string;
-  /** Categoría asignada automáticamente por el modelo de IA (Transfer Learning). */
   categoria_ia: string;
-  /** Precio de lista antes del descuento. Si está presente y es mayor a `precio`, se muestra tachado + badge de %. */
   precioOriginal?: number;
-  /** Promedio de 0 a 5. Opcional: un producto recién clasificado por la IA aún no tiene reseñas. */
   rating?: number;
   numResenas?: number;
   envioGratis?: boolean;
   esNuevo?: boolean;
-  /** Descripción larga para la página de detalle del producto. */
   descripcion?: string;
 }
 
-/** Respuesta del motor de IA al clasificar la imagen de un producto nuevo. */
 export interface AIResponse {
   success: boolean;
   predicted_category: string;
   accuracy: number;
 }
 
-/** Payload que se envía a POST /api/productos (multipart/form-data). */
 export interface NewProductInput {
   nombre: string;
   precio: number;
@@ -64,7 +65,6 @@ export interface NewProductInput {
   imagen: File;
 }
 
-/** Respuesta esperada al crear un producto: el producto guardado + el veredicto de la IA. */
 export interface CreateProductResponse {
   producto: Product;
   ai: AIResponse;
@@ -75,7 +75,6 @@ export interface CartItem {
   cantidad: number;
 }
 
-/** Dirección de envío. Simplificada para Perú (sin dividir en departamento/provincia/distrito todavía). */
 export interface ShippingAddress {
   nombre: string;
   direccion: string;
@@ -95,11 +94,6 @@ export interface OrderItem {
   cantidad: number;
 }
 
-/**
- * Pedido. Hoy se genera y persiste solo en el navegador (ver
- * store/orders-store.ts); cuando exista `POST /api/pedidos` en el backend,
- * esta es la forma exacta que debe devolver.
- */
 export interface Order {
   id: string;
   fecha: string;
@@ -112,7 +106,6 @@ export interface Order {
   estado: OrderStatus;
 }
 
-/** Forma estándar de error que devuelve FastAPI (HTTPException). */
 export interface ApiErrorResponse {
   detail: string;
 }

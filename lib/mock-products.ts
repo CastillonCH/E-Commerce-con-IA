@@ -1,10 +1,5 @@
 import type { Product } from "@/types";
 
-/**
- * Datos simulados usados hasta que `GET /api/productos` exista en el backend.
- * `fetchProducts` en lib/api.ts es la única función a reemplazar cuando el
- * endpoint real esté listo; el resto de la UI no necesita cambiar.
- */
 export const MOCK_PRODUCTS: Product[] = [
   {
     id: "1",
@@ -13,10 +8,10 @@ export const MOCK_PRODUCTS: Product[] = [
     precioOriginal: 349.9,
     stock: 24,
     marca: "SoundMax",
-    departamento: "Electronica",
+    departamento: "Electrónica",
     imagen_url:
       "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "audio_headphones",
+    categoria_ia: "Audio y audífonos",
     rating: 4.6,
     numResenas: 328,
     envioGratis: true,
@@ -32,7 +27,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Hogar",
     imagen_url:
       "https://images.unsplash.com/photo-1570222094114-d054a817e56b?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "kitchen_appliance",
+    categoria_ia: "Electrodomésticos de cocina",
     rating: 4.3,
     numResenas: 94,
     descripcion:
@@ -48,7 +43,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Moda",
     imagen_url:
       "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "outerwear_jacket",
+    categoria_ia: "Casacas y abrigos",
     rating: 4.8,
     numResenas: 156,
     envioGratis: true,
@@ -65,7 +60,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Deportes",
     imagen_url:
       "https://images.unsplash.com/photo-1614632537197-38a17061c2bd?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "sports_ball",
+    categoria_ia: "Balones",
     rating: 4.5,
     numResenas: 210,
     descripcion:
@@ -81,7 +76,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Belleza",
     imagen_url:
       "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "beauty_tools",
+    categoria_ia: "Herramientas de belleza",
     rating: 4.7,
     numResenas: 412,
     envioGratis: true,
@@ -94,10 +89,10 @@ export const MOCK_PRODUCTS: Product[] = [
     precio: 549.0,
     stock: 15,
     marca: "SoundMax",
-    departamento: "Electronica",
+    departamento: "Electrónica",
     imagen_url:
       "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "wearable_tech",
+    categoria_ia: "Relojes inteligentes y wearables",
     rating: 4.4,
     numResenas: 87,
     esNuevo: true,
@@ -114,7 +109,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Hogar",
     imagen_url:
       "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "kitchen_appliance",
+    categoria_ia: "Electrodomésticos de cocina",
     rating: 4.2,
     numResenas: 63,
     descripcion:
@@ -126,10 +121,10 @@ export const MOCK_PRODUCTS: Product[] = [
     precio: 259.9,
     stock: 30,
     marca: "ProSport",
-    departamento: "Deportes",
+    departamento: "Moda",
     imagen_url:
       "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "footwear_sneaker",
+    categoria_ia: "Zapatillas y calzado",
     rating: 4.6,
     numResenas: 275,
     envioGratis: true,
@@ -146,7 +141,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Belleza",
     imagen_url:
       "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "fragrance",
+    categoria_ia: "Fragancias",
     rating: 4.9,
     numResenas: 501,
     envioGratis: true,
@@ -162,7 +157,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Juguetes",
     imagen_url:
       "https://images.unsplash.com/photo-1587654780291-39c9404d746b?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "toy_building_blocks",
+    categoria_ia: "Bloques de construcción",
     rating: 4.7,
     numResenas: 132,
     esNuevo: true,
@@ -176,10 +171,10 @@ export const MOCK_PRODUCTS: Product[] = [
     precioOriginal: 3199.0,
     stock: 9,
     marca: "SoundMax",
-    departamento: "Electronica",
+    departamento: "Electrónica",
     imagen_url:
       "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "laptop_computer",
+    categoria_ia: "Laptops y computadoras",
     rating: 4.5,
     numResenas: 58,
     envioGratis: true,
@@ -195,7 +190,7 @@ export const MOCK_PRODUCTS: Product[] = [
     departamento: "Supermercado",
     imagen_url:
       "https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "grocery_bundle",
+    categoria_ia: "Abarrotes y snacks",
     rating: 4.3,
     numResenas: 76,
     envioGratis: true,

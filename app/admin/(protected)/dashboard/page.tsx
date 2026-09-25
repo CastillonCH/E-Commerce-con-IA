@@ -5,7 +5,11 @@ import { formatCurrency } from "@/lib/utils";
 
 const STATS = [
   { label: "Productos activos", value: MOCK_PRODUCTS.length, icon: Package },
-  { label: "Stock total", value: MOCK_PRODUCTS.reduce((sum, p) => sum + p.stock, 0), icon: TrendingUp },
+  {
+    label: "Stock total",
+    value: MOCK_PRODUCTS.reduce((sum, p) => sum + p.stock, 0),
+    icon: TrendingUp,
+  },
   { label: "Vendedores activos", value: 3, icon: Store },
   { label: "Ventas del mes", value: formatCurrency(48250), icon: Users },
 ];
@@ -66,7 +70,10 @@ export default function AdminDashboardPage() {
             </thead>
             <tbody>
               {MOCK_PRODUCTS.slice(0, 5).map((product) => (
-                <tr key={product.id} className="border-b border-slate-100 text-slate-700">
+                <tr
+                  key={product.id}
+                  className="border-b border-slate-100 text-slate-700"
+                >
                   <td className="py-2 pr-4">{product.nombre}</td>
                   <td className="py-2 pr-4">{product.departamento}</td>
                   <td className="py-2 pr-4">

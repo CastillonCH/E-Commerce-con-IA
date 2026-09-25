@@ -17,7 +17,12 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 
 export function OrderStatusBadge({ estado }: { estado: OrderStatus }) {
   return (
-    <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", STATUS_STYLES[estado])}>
+    <span
+      className={cn(
+        "rounded-full px-2.5 py-1 text-xs font-semibold",
+        STATUS_STYLES[estado],
+      )}
+    >
       {STATUS_LABELS[estado]}
     </span>
   );

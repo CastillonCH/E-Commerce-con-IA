@@ -12,7 +12,11 @@ import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 
-const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
+const PAYMENT_OPTIONS: {
+  value: PaymentMethod;
+  label: string;
+  icon: typeof CreditCard;
+}[] = [
   { value: "tarjeta", label: "Tarjeta de crédito/débito", icon: CreditCard },
   { value: "yape_plin", label: "Yape / Plin", icon: Smartphone },
   { value: "contraentrega", label: "Pago contraentrega", icon: TruckIcon },
@@ -23,7 +27,10 @@ interface CheckoutFormProps {
   emailInicial: string;
 }
 
-export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps) {
+export function CheckoutForm({
+  nombreInicial,
+  emailInicial,
+}: CheckoutFormProps) {
   const router = useRouter();
   const mounted = useHasMounted();
   const items = useCartStore((state) => state.items);
@@ -42,9 +49,6 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
     event.preventDefault();
     setIsSubmitting(true);
 
-    // Simula la creación del pedido: cuando exista POST /api/pedidos en el
-    // backend, este bloque se reemplaza por esa llamada; el resto del flujo
-    // (limpiar carrito, ir a confirmación) no cambia.
     const orderId = `PED-${Date.now().toString().slice(-8)}`;
     addOrder({
       id: orderId,
@@ -73,21 +77,35 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
   if (items.length === 0) {
     return (
       <div className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-4 py-24 text-center">
-        <p className="text-lg font-medium text-slate-900">Tu carrito está vacío</p>
-        <p className="text-sm text-slate-500">Añade productos antes de continuar con el pago.</p>
+        <p className="text-lg font-medium text-slate-900">
+          Tu carrito está vacío
+        </p>
+        <p className="text-sm text-slate-500">
+          Añade productos antes de continuar con el pago.
+        </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
+    <form
+      onSubmit={handleSubmit}
+      className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]"
+    >
       <div className="flex flex-col gap-8">
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Dirección de envío</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Dirección de envío
+          </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label htmlFor="nombre">Nombre completo</Label>
-              <Input id="nombre" required value={nombre} onChange={(e) => setNombre(e.target.value)} />
+              <Input
+                id="nombre"
+                required
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+              />
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="direccion">Dirección</Label>
@@ -101,7 +119,12 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
             </div>
             <div>
               <Label htmlFor="ciudad">Ciudad</Label>
-              <Input id="ciudad" required value={ciudad} onChange={(e) => setCiudad(e.target.value)} />
+              <Input
+                id="ciudad"
+                required
+                value={ciudad}
+                onChange={(e) => setCiudad(e.target.value)}
+              />
             </div>
             <div>
               <Label htmlFor="telefono">Teléfono</Label>
@@ -118,7 +141,9 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
         </div>
 
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Método de pago</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Método de pago
+          </h2>
           <div className="flex flex-col gap-2.5">
             {PAYMENT_OPTIONS.map(({ value, label, icon: Icon }) => (
               <label
@@ -127,7 +152,7 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
                   "flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
                   metodoPago === value
                     ? "border-slate-900 bg-slate-50 text-slate-900"
-                    : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    : "border-slate-200 text-slate-600 hover:border-slate-300",
                 )}
               >
                 <input
@@ -147,15 +172,25 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
       </div>
 
       <div className="h-fit rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">Resumen del pedido</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-900">
+          Resumen del pedido
+        </h2>
         <ul className="flex flex-col gap-3">
           {items.map(({ product, cantidad }) => (
             <li key={product.id} className="flex items-center gap-3">
               <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                <Image src={product.imagen_url} alt={product.nombre} fill sizes="48px" className="object-cover" />
+                <Image
+                  src={product.imagen_url}
+                  alt={product.nombre}
+                  fill
+                  sizes="48px"
+                  className="object-cover"
+                />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">{product.nombre}</p>
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {product.nombre}
+                </p>
                 <p className="text-xs text-slate-500">Cant. {cantidad}</p>
               </div>
               <p className="shrink-0 text-sm font-semibold text-slate-900">
@@ -167,7 +202,9 @@ export function CheckoutForm({ nombreInicial, emailInicial }: CheckoutFormProps)
 
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
           <p className="text-base font-semibold text-slate-900">Total</p>
-          <p className="text-lg font-extrabold text-slate-900">{formatCurrency(totalPrice)}</p>
+          <p className="text-lg font-extrabold text-slate-900">
+            {formatCurrency(totalPrice)}
+          </p>
         </div>
 
         <Button type="submit" disabled={isSubmitting} className="mt-5 w-full">

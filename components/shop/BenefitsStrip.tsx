@@ -3,10 +3,26 @@ import { APP_CONFIG } from "@/lib/config";
 import { formatCurrency } from "@/lib/utils";
 
 const BENEFITS = [
-  { icon: Truck, title: "Envío rápido", subtitle: `Gratis desde ${formatCurrency(APP_CONFIG.freeShippingThreshold)}` },
-  { icon: ShieldCheck, title: "Pago seguro", subtitle: "Tus datos siempre protegidos" },
-  { icon: RotateCcw, title: "Devoluciones fáciles", subtitle: "30 días para cambios" },
-  { icon: Headset, title: "Soporte 24/7", subtitle: "Asistente virtual + WhatsApp" },
+  {
+    icon: Truck,
+    title: "Envío rápido",
+    subtitle: `Gratis desde ${formatCurrency(APP_CONFIG.freeShippingThreshold)}`,
+  },
+  {
+    icon: ShieldCheck,
+    title: "Pago seguro",
+    subtitle: "Tus datos siempre protegidos",
+  },
+  {
+    icon: RotateCcw,
+    title: "Devoluciones fáciles",
+    subtitle: "30 días para cambios",
+  },
+  {
+    icon: Headset,
+    title: "Soporte 24/7",
+    subtitle: "Asistente virtual + WhatsApp",
+  },
 ];
 
 export function BenefitsStrip() {

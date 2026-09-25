@@ -7,15 +7,13 @@ import { formatCurrency } from "@/lib/utils";
 import type { OrderStatus } from "@/types";
 import { OrderStatusBadge } from "@/components/shop/OrderStatusBadge";
 
-const STATUS_OPTIONS: OrderStatus[] = ["pendiente", "en_camino", "entregado", "cancelado"];
+const STATUS_OPTIONS: OrderStatus[] = [
+  "pendiente",
+  "en_camino",
+  "entregado",
+  "cancelado",
+];
 
-/**
- * Lista todos los pedidos guardados en el store local de pedidos (creados
- * desde /checkout en este mismo navegador — no hay backend todavía que
- * centralice pedidos de todos los usuarios). Cuando exista
- * `GET /api/pedidos` y `PATCH /api/pedidos/:id`, reemplazar el store por
- * esas llamadas; el resto de esta tabla no necesita cambiar.
- */
 export function AdminOrdersTable() {
   const mounted = useHasMounted();
   const orders = useOrdersStore((state) => state.orders);
@@ -27,9 +25,12 @@ export function AdminOrdersTable() {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center">
         <PackageSearch className="h-8 w-8 text-slate-400" />
-        <p className="text-sm font-medium text-slate-900">Todavía no hay pedidos</p>
+        <p className="text-sm font-medium text-slate-900">
+          Todavía no hay pedidos
+        </p>
         <p className="text-xs text-slate-500">
-          Los pedidos que los clientes generen desde el checkout aparecerán aquí.
+          Los pedidos que los clientes generen desde el checkout aparecerán
+          aquí.
         </p>
       </div>
     );
@@ -49,8 +50,13 @@ export function AdminOrdersTable() {
         </thead>
         <tbody>
           {orders.map((order) => (
-            <tr key={order.id} className="border-b border-slate-100 text-slate-700 last:border-0">
-              <td className="px-4 py-3 font-medium text-slate-900">{order.id}</td>
+            <tr
+              key={order.id}
+              className="border-b border-slate-100 text-slate-700 last:border-0"
+            >
+              <td className="px-4 py-3 font-medium text-slate-900">
+                {order.id}
+              </td>
               <td className="px-4 py-3">
                 <p>{order.clienteNombre}</p>
                 <p className="text-xs text-slate-500">{order.clienteEmail}</p>
@@ -68,7 +74,9 @@ export function AdminOrdersTable() {
                   <OrderStatusBadge estado={order.estado} />
                   <select
                     value={order.estado}
-                    onChange={(event) => updateStatus(order.id, event.target.value as OrderStatus)}
+                    onChange={(event) =>
+                      updateStatus(order.id, event.target.value as OrderStatus)
+                    }
                     aria-label={`Cambiar estado del pedido ${order.id}`}
                     className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-slate-900"
                   >

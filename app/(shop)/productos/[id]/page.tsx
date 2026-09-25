@@ -10,12 +10,6 @@ interface ProductPageProps {
   params: Promise<{ id: string }>;
 }
 
-/**
- * Página de detalle del producto. Hoy resuelve contra MOCK_PRODUCTS; cuando
- * exista `GET /api/productos/{id}` en el backend, reemplazar la búsqueda de
- * abajo por esa llamada (misma forma de `Product`, así que el resto de la
- * página no cambia).
- */
 export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
   const product = MOCK_PRODUCTS.find((p) => p.id === id);
@@ -26,7 +20,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const discount = discountPercent(product.precio, product.precioOriginal);
   const relacionados = MOCK_PRODUCTS.filter(
-    (p) => p.departamento === product.departamento && p.id !== product.id
+    (p) => p.departamento === product.departamento && p.id !== product.id,
   );
 
   return (
@@ -66,8 +60,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
           {product.rating !== undefined && (
             <div className="flex items-center gap-1.5 text-sm text-slate-600">
               <Star className="h-4 w-4 fill-orange-400 text-orange-400" />
-              <span className="font-semibold text-slate-900">{product.rating.toFixed(1)}</span>
-              {product.numResenas !== undefined && <span>({product.numResenas} reseñas)</span>}
+              <span className="font-semibold text-slate-900">
+                {product.rating.toFixed(1)}
+              </span>
+              {product.numResenas !== undefined && (
+                <span>({product.numResenas} reseñas)</span>
+              )}
             </div>
           )}
 
@@ -83,7 +81,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
           </div>
 
           {product.descripcion && (
-            <p className="text-sm leading-relaxed text-slate-600">{product.descripcion}</p>
+            <p className="text-sm leading-relaxed text-slate-600">
+              {product.descripcion}
+            </p>
           )}
 
           <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
@@ -104,7 +104,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
       </div>
 
       {relacionados.length > 0 && (
-        <ProductCarousel title="Productos relacionados" products={relacionados} />
+        <ProductCarousel
+          title="Productos relacionados"
+          products={relacionados}
+        />
       )}
     </div>
   );

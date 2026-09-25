@@ -1,26 +1,8 @@
 @import "tailwindcss";
 
-/*
- * Tienda con un único tema (claro), a propósito: como SagaFalabella o
- * Samsung.com, la identidad visual no cambia con las preferencias de SO del
- * visitante. `color-scheme: light` evita que el navegador oscurezca por su
- * cuenta controles nativos (scrollbar, inputs, selects) cuando el sistema
- * está en modo oscuro.
- *
- * Importante: html/body van dentro de `@layer base`, no como CSS suelto.
- * Tailwind v4 genera sus utilidades dentro de cascade layers; una regla CSS
- * fuera de cualquier `@layer` tiene MÁS prioridad que cualquier utilidad
- * (independiente de especificidad), así que un `body { background: ... }`
- * suelto aquí ganaría incluso a un `bg-slate-50` puesto a mano en el JSX.
- * Ese fue exactamente el bug: con el sistema en modo oscuro, esa regla
- * suelta pintaba body casi negro por debajo de texto oscuro pensado para
- * fondo claro.
- */
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
-  /* "Samsung Blue", el azul de marca oficial de Samsung — único acento de
-     color sobre una base blanco/negro, igual que su propio sistema visual. */
   --color-brand: #1428a0;
   --color-brand-hover: #0f1f7a;
   color-scheme: light;
@@ -46,43 +28,74 @@
   }
 }
 
-/*
- * Animaciones reutilizables (sin librería): se aplican con la sintaxis de
- * valor arbitrario de Tailwind, p.ej. `animate-[fade-up_0.6s_ease-out]`.
- * `prefers-reduced-motion` las desactiva para quien lo pida.
- */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(18px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.96) translateY(-6px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 @keyframes pop-in {
-  from { opacity: 0; transform: scale(0.9) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-14px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
 }
 
 @keyframes ping-soft {
-  0% { transform: scale(1); opacity: 0.7; }
-  75%, 100% { transform: scale(2); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

@@ -23,7 +23,6 @@ interface SupportTopic {
   id: string;
   label: string;
   icon: LucideIcon;
-  /** navigate: se resuelve dentro de la tienda. info: muestra una respuesta y ofrece WhatsApp como salida. whatsapp: va directo a WhatsApp. */
   kind: "navigate" | "info" | "whatsapp";
   href?: string;
   info?: string;
@@ -74,25 +73,12 @@ function whatsappHref(message: string) {
   return `https://wa.me/${APP_CONFIG.whatsappNumber}?text=${encodeURIComponent(message)}`;
 }
 
-/**
- * Asistente virtual guiado por opciones (sin campo de texto libre): el
- * usuario elige un tema y, según el tema, ve una respuesta dentro de la
- * tienda o pasa a WhatsApp con un asesor humano. Conectar esto a un motor de
- * IA real (respuestas generadas, no solo un árbol de opciones fijo) es
- * trabajo de backend — ver TODO en `handleSelectTopic`.
- */
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [activeTopic, setActiveTopic] = useState<SupportTopic | null>(null);
   const [showTeaser, setShowTeaser] = useState(false);
 
-  // La burbuja de sugerencia no debe quedarse fija: con el chat cerrado,
-  // aparece, se retira sola a los pocos segundos (para no tapar productos o
-  // descripciones si el usuario no la cierra) y vuelve a asomar cada cierto
-  // tiempo, en vez de permanecer en pantalla todo el rato.
   useEffect(() => {
-    // Mientras el chat está abierto no hace falta programar nada: la burbuja
-    // ya está oculta en el render (`!open && showTeaser` más abajo).
     if (open) return;
 
     const FIRST_APPEARANCE = 4000;
@@ -120,9 +106,6 @@ export function AssistantWidget() {
   }, [open]);
 
   function handleSelectTopic(topic: SupportTopic) {
-    // TODO(backend): si en el futuro se agregan respuestas generadas por IA
-    // (no solo estas opciones fijas), la lógica de "responder" va aquí,
-    // llamando a un endpoint tipo POST /api/asistente.
     setActiveTopic(topic);
   }
 
@@ -140,7 +123,9 @@ export function AssistantWidget() {
             onClick={handleOpen}
             className="flex-1 text-left text-sm text-slate-700"
           >
-            <span className="font-semibold text-slate-900">¿Buscas algo en especial?</span>{" "}
+            <span className="font-semibold text-slate-900">
+              ¿Buscas algo en especial?
+            </span>{" "}
             Puedo ayudarte a encontrarlo o conectarte con un asesor. 👋
           </button>
           <button
@@ -162,7 +147,9 @@ export function AssistantWidget() {
                 <Bot className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-sm font-semibold leading-none">Asistente {APP_CONFIG.storeName}</p>
+                <p className="text-sm font-semibold leading-none">
+                  Asistente {APP_CONFIG.storeName}
+                </p>
                 <p className="mt-1 flex items-center gap-1 text-[11px] text-white/80">
                   <Sparkles className="h-3 w-3" /> Impulsado por IA
                 </p>
@@ -179,7 +166,10 @@ export function AssistantWidget() {
           </div>
 
           {activeTopic ? (
-            <TopicScreen topic={activeTopic} onBack={() => setActiveTopic(null)} />
+            <TopicScreen
+              topic={activeTopic}
+              onBack={() => setActiveTopic(null)}
+            />
           ) : (
             <MenuScreen onSelectTopic={handleSelectTopic} />
           )}
@@ -192,7 +182,9 @@ export function AssistantWidget() {
           setOpen((v) => !v);
           setShowTeaser(false);
         }}
-        aria-label={open ? "Cerrar asistente virtual" : "Abrir asistente virtual"}
+        aria-label={
+          open ? "Cerrar asistente virtual" : "Abrir asistente virtual"
+        }
         className="relative flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition-transform hover:scale-105 hover:bg-brand-hover"
       >
         {open ? (
@@ -211,12 +203,17 @@ export function AssistantWidget() {
   );
 }
 
-function MenuScreen({ onSelectTopic }: { onSelectTopic: (topic: SupportTopic) => void }) {
+function MenuScreen({
+  onSelectTopic,
+}: {
+  onSelectTopic: (topic: SupportTopic) => void;
+}) {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-slate-50">
       <div className="px-4 pt-4">
         <p className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700">
-          ¡Hola! 👋 Soy el asistente virtual de {APP_CONFIG.storeName}. Elige una opción y te ayudo:
+          ¡Hola! 👋 Soy el asistente virtual de {APP_CONFIG.storeName}. Elige
+          una opción y te ayudo:
         </p>
       </div>
       <div className="flex flex-col gap-1.5 p-4">
@@ -240,7 +237,13 @@ function MenuScreen({ onSelectTopic }: { onSelectTopic: (topic: SupportTopic) =>
   );
 }
 
-function TopicScreen({ topic, onBack }: { topic: SupportTopic; onBack: () => void }) {
+function TopicScreen({
+  topic,
+  onBack,
+}: {
+  topic: SupportTopic;
+  onBack: () => void;
+}) {
   return (
     <div className="flex flex-1 animate-[fade-in_0.2s_ease-out] flex-col overflow-y-auto bg-slate-50">
       <button
@@ -258,7 +261,9 @@ function TopicScreen({ topic, onBack }: { topic: SupportTopic; onBack: () => voi
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-brand">
               <topic.icon className="h-3.5 w-3.5" />
             </span>
-            <p className="text-sm font-semibold text-slate-900">{topic.label}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {topic.label}
+            </p>
           </div>
           <p className="text-sm text-slate-600">
             {topic.kind === "info"
@@ -286,7 +291,9 @@ function TopicScreen({ topic, onBack }: { topic: SupportTopic; onBack: () => voi
             className="mt-auto flex items-center justify-center gap-2 rounded-full bg-green-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-800"
           >
             <MessageCircle className="h-4 w-4" />
-            {topic.kind === "info" ? "¿Sigues con dudas? Escríbenos" : "Continuar por WhatsApp"}
+            {topic.kind === "info"
+              ? "¿Sigues con dudas? Escríbenos"
+              : "Continuar por WhatsApp"}
           </a>
         )}
       </div>

@@ -1,4 +1,3 @@
-/** Marca de 4 colores de Google, tal como exigen sus guías de marca para botones "Sign in with Google". */
 export function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">

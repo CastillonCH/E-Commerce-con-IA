@@ -21,12 +21,11 @@ const productSchema = z.object({
   departamento: z.enum(DEPARTAMENTOS, {
     message: "Selecciona un departamento",
   }),
-  imagen: z.instanceof(File, { message: "La foto del producto es obligatoria" }),
+  imagen: z.instanceof(File, {
+    message: "La foto del producto es obligatoria",
+  }),
 });
 
-// z.coerce.number() acepta un input distinto (string/unknown) al output ya
-// parseado (number); RHF necesita ambos tipos para tipar el formulario y el
-// valor final que llega a onSubmit correctamente.
 type ProductFormInput = z.input<typeof productSchema>;
 type ProductFormValues = z.output<typeof productSchema>;
 
@@ -54,7 +53,7 @@ export default function AdminNewProductPage() {
     try {
       const { ai } = await createProduct(values);
       toast.success(
-        `Producto guardado exitosamente. La IA lo ha clasificado automáticamente como: ${ai.predicted_category}`
+        `Producto guardado exitosamente. La IA lo ha clasificado automáticamente como: ${ai.predicted_category}`,
       );
       router.push("/admin/dashboard");
     } catch (error) {
@@ -66,19 +65,31 @@ export default function AdminNewProductPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Nuevo producto</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-slate-900">
+        Nuevo producto
+      </h1>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         <div>
           <Label htmlFor="nombre">Nombre</Label>
-          <Input id="nombre" {...register("nombre")} placeholder="Audífonos Inalámbricos Pro" />
+          <Input
+            id="nombre"
+            {...register("nombre")}
+            placeholder="Audífonos Inalámbricos Pro"
+          />
           <FieldError message={errors.nombre?.message} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="precio">Precio</Label>
-            <Input id="precio" type="number" step="0.01" min="0" {...register("precio")} />
+            <Input
+              id="precio"
+              type="number"
+              step="0.01"
+              min="0"
+              {...register("precio")}
+            />
             <FieldError message={errors.precio?.message} />
           </div>
           <div>
@@ -96,7 +107,11 @@ export default function AdminNewProductPage() {
 
         <div>
           <Label htmlFor="departamento">Departamento</Label>
-          <Select id="departamento" defaultValue="" {...register("departamento")}>
+          <Select
+            id="departamento"
+            defaultValue=""
+            {...register("departamento")}
+          >
             <option value="" disabled>
               Selecciona un departamento
             </option>
@@ -123,7 +138,12 @@ export default function AdminNewProductPage() {
           />
         </div>
 
-        <Button type="submit" variant="dark" disabled={isAnalyzing} className="mt-2">
+        <Button
+          type="submit"
+          variant="dark"
+          disabled={isAnalyzing}
+          className="mt-2"
+        >
           {isAnalyzing ? "Analizando..." : "Guardar producto"}
         </Button>
       </form>

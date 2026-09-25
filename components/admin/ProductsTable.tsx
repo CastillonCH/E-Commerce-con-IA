@@ -13,7 +13,12 @@ export function ProductsTable({ products }: { products: Product[] }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleDelete(product: Product) {
-    if (!confirm(`¿Eliminar "${product.nombre}"? Esta acción no se puede deshacer.`)) return;
+    if (
+      !confirm(
+        `¿Eliminar "${product.nombre}"? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
 
     setDeletingId(product.id);
     try {
@@ -21,8 +26,6 @@ export function ProductsTable({ products }: { products: Product[] }) {
       setItems((prev) => prev.filter((p) => p.id !== product.id));
       toast.success("Producto eliminado");
     } catch (error) {
-      // Hasta que exista el backend, este endpoint no existe y siempre
-      // fallará aquí: es el comportamiento esperado, no un bug del frontend.
       toast.error(getApiErrorMessage(error));
     } finally {
       setDeletingId(null);
@@ -45,7 +48,10 @@ export function ProductsTable({ products }: { products: Product[] }) {
         </thead>
         <tbody>
           {items.map((product) => (
-            <tr key={product.id} className="border-b border-slate-100 text-slate-700 last:border-0">
+            <tr
+              key={product.id}
+              className="border-b border-slate-100 text-slate-700 last:border-0"
+            >
               <td className="px-4 py-3">{product.nombre}</td>
               <td className="px-4 py-3">{product.marca}</td>
               <td className="px-4 py-3">{product.departamento}</td>

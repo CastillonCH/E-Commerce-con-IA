@@ -24,21 +24,28 @@ export default function AdminClientsPage() {
           </thead>
           <tbody>
             {MOCK_CLIENTS.map((client) => (
-              <tr key={client.id} className="border-b border-slate-100 text-slate-700 last:border-0">
+              <tr
+                key={client.id}
+                className="border-b border-slate-100 text-slate-700 last:border-0"
+              >
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                       <Users className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="font-medium text-slate-900">{client.nombre}</p>
+                      <p className="font-medium text-slate-900">
+                        {client.nombre}
+                      </p>
                       <p className="text-xs text-slate-500">{client.email}</p>
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">{client.fechaRegistro}</td>
                 <td className="px-4 py-3">{client.pedidos}</td>
-                <td className="px-4 py-3 font-medium">{formatCurrency(client.totalGastado)}</td>
+                <td className="px-4 py-3 font-medium">
+                  {formatCurrency(client.totalGastado)}
+                </td>
               </tr>
             ))}
           </tbody>

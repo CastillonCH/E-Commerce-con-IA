@@ -9,14 +9,6 @@ import { Input, Label, Select } from "@/components/ui/Input";
 import { APP_CONFIG } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
-/**
- * Acceso de STAFF (vendedor/administrador). A propósito NO está enlazado
- * desde la tienda pública ni ofrece registro: solo cuentas ya dadas de alta
- * por la empresa deberían llegar aquí. El selector de rol de abajo es
- * SOLO para poder demostrar ambos paneles sin backend — ver el TODO en
- * app/api/auth/staff-login/route.ts, donde se explica por qué en producción
- * el rol nunca debe salir de un campo que envía el propio formulario.
- */
 function StaffLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,7 +57,9 @@ function StaffLoginForm() {
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">{APP_CONFIG.storeName}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {APP_CONFIG.storeName}
+            </p>
             <p className="text-xs text-slate-500">Acceso interno</p>
           </div>
         </div>
@@ -76,7 +70,9 @@ function StaffLoginForm() {
             <Select
               id="role"
               value={role}
-              onChange={(event) => setRole(event.target.value as "SELLER" | "ADMIN")}
+              onChange={(event) =>
+                setRole(event.target.value as "SELLER" | "ADMIN")
+              }
             >
               <option value="SELLER">Vendedor / Encargado de inventario</option>
               <option value="ADMIN">Administrador global</option>
@@ -107,14 +103,22 @@ function StaffLoginForm() {
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <Button type="submit" variant="dark" disabled={isLoading} className={cn("mt-1 w-full")}>
+          <Button
+            type="submit"
+            variant="dark"
+            disabled={isLoading}
+            className={cn("mt-1 w-full")}
+          >
             {isLoading ? "Ingresando..." : "Ingresar"}
           </Button>
         </form>
 
         <p className="mt-5 text-center text-xs text-slate-500">
           ¿Eres cliente?{" "}
-          <Link href="/login" className="font-medium text-brand hover:underline">
+          <Link
+            href="/login"
+            className="font-medium text-brand hover:underline"
+          >
             Ingresa aquí
           </Link>
         </p>

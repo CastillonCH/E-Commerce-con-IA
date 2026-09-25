@@ -14,8 +14,13 @@ export default function CartPage() {
   if (items.length === 0) {
     return (
       <div className="mx-auto flex max-w-2xl flex-1 flex-col items-center justify-center gap-3 px-4 py-24 text-center">
-        <p className="text-lg font-medium text-slate-900">Tu carrito está vacío</p>
-        <Link href="/" className="text-sm font-medium text-brand hover:underline">
+        <p className="text-lg font-medium text-slate-900">
+          Tu carrito está vacío
+        </p>
+        <Link
+          href="/"
+          className="text-sm font-medium text-brand hover:underline"
+        >
           Volver a la tienda
         </Link>
       </div>
@@ -28,9 +33,14 @@ export default function CartPage() {
 
       <ul className="flex flex-col divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
         {items.map(({ product, cantidad }) => (
-          <li key={product.id} className="flex items-center justify-between gap-4 p-4">
+          <li
+            key={product.id}
+            className="flex items-center justify-between gap-4 p-4"
+          >
             <div>
-              <p className="text-sm font-medium text-slate-900">{product.nombre}</p>
+              <p className="text-sm font-medium text-slate-900">
+                {product.nombre}
+              </p>
               <p className="text-xs text-slate-500">
                 {cantidad} x {formatCurrency(product.precio)}
               </p>

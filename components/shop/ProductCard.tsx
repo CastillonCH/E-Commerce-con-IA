@@ -61,13 +61,19 @@ export function ProductCard({ product }: { product: Product }) {
           {product.rating !== undefined && (
             <div className="flex items-center gap-1 text-xs text-slate-500">
               <Star className="h-3.5 w-3.5 fill-orange-400 text-orange-400" />
-              <span className="font-medium text-slate-700">{product.rating.toFixed(1)}</span>
-              {product.numResenas !== undefined && <span>({product.numResenas})</span>}
+              <span className="font-medium text-slate-700">
+                {product.rating.toFixed(1)}
+              </span>
+              {product.numResenas !== undefined && (
+                <span>({product.numResenas})</span>
+              )}
             </div>
           )}
 
           <div className="mt-1 flex items-baseline gap-2">
-            <p className="text-lg font-bold text-slate-900">{formatCurrency(product.precio)}</p>
+            <p className="text-lg font-bold text-slate-900">
+              {formatCurrency(product.precio)}
+            </p>
             {product.precioOriginal && (
               <p className="text-xs text-slate-500 line-through">
                 {formatCurrency(product.precioOriginal)}

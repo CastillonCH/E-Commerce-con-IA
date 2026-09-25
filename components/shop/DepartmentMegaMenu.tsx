@@ -4,19 +4,14 @@ import { ChevronRight } from "lucide-react";
 import type { Departamento } from "@/types";
 import { MOCK_PRODUCTS } from "@/lib/mock-products";
 
-/**
- * Panel que el Navbar monta/desmonta según su propio estado (`openDept`),
- * no CSS `group-hover`: con hover puro, cuando el mouse pasa rápido de un
- * departamento a otro, el panel que se cierra puede tardar en desvanecerse
- * mientras el nuevo ya apareció — ambos visibles a la vez, superpuestos. Con
- * un solo estado en el padre, abrir uno cierra el otro en el mismo render,
- * así nunca puede haber dos abiertos simultáneamente. Usa productos reales
- * del catálogo simulado como vitrina — nada de datos inventados — así que
- * el número de miniaturas varía según cuántos productos tenga ese
- * departamento hoy.
- */
-export function DepartmentMegaMenu({ departamento }: { departamento: Departamento }) {
-  const featured = MOCK_PRODUCTS.filter((p) => p.departamento === departamento).slice(0, 4);
+export function DepartmentMegaMenu({
+  departamento,
+}: {
+  departamento: Departamento;
+}) {
+  const featured = MOCK_PRODUCTS.filter(
+    (p) => p.departamento === departamento,
+  ).slice(0, 4);
   const verTodoHref = `/?categoria=${departamento}`;
 
   return (
@@ -31,7 +26,13 @@ export function DepartmentMegaMenu({ departamento }: { departamento: Departament
                 className="group/item flex w-20 flex-col items-center gap-2 rounded-xl p-1.5 text-center transition-colors hover:bg-slate-50"
               >
                 <div className="relative h-16 w-16 overflow-hidden rounded-full bg-slate-100 transition-transform duration-200 group-hover/item:scale-105">
-                  <Image src={product.imagen_url} alt={product.nombre} fill sizes="64px" className="object-cover" />
+                  <Image
+                    src={product.imagen_url}
+                    alt={product.nombre}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
                 </div>
                 <span className="line-clamp-2 text-[11px] font-medium leading-tight text-slate-700">
                   {product.nombre}
@@ -41,17 +42,31 @@ export function DepartmentMegaMenu({ departamento }: { departamento: Departament
           </div>
         )}
 
-        <div className={featured.length > 0 ? "w-44 shrink-0 border-l border-slate-100 pl-6" : "w-44 shrink-0"}>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Explora</p>
+        <div
+          className={
+            featured.length > 0
+              ? "w-44 shrink-0 border-l border-slate-100 pl-6"
+              : "w-44 shrink-0"
+          }
+        >
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Explora
+          </p>
           <ul className="flex flex-col gap-2.5 text-sm">
             <li>
-              <Link href={verTodoHref} className="flex items-center gap-1 font-medium text-slate-800 hover:text-brand">
+              <Link
+                href={verTodoHref}
+                className="flex items-center gap-1 font-medium text-slate-800 hover:text-brand"
+              >
                 Ver todo
                 <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             </li>
             <li>
-              <Link href={`${verTodoHref}&nuevo=1`} className="text-slate-600 hover:text-brand">
+              <Link
+                href={`${verTodoHref}&nuevo=1`}
+                className="text-slate-600 hover:text-brand"
+              >
                 Novedades
               </Link>
             </li>

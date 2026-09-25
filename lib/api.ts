@@ -7,17 +7,11 @@ import type {
   Product,
 } from "@/types";
 
-/**
- * Cliente axios único hacia el backend FastAPI. Centralizar la baseURL y el
- * manejo de errores aquí evita repetir try/catch y strings de URL en cada
- * componente, y es el único lugar a tocar cuando cambie el contrato del backend.
- */
 export const api = axios.create({
   baseURL: APP_CONFIG.apiUrl,
   timeout: 15000,
 });
 
-/** Normaliza cualquier error de axios al mensaje que el backend envía en `detail`. */
 export function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiErrorResponse>;
@@ -34,13 +28,8 @@ export async function fetchProducts(): Promise<Product[]> {
   return data;
 }
 
-/**
- * Envía el formulario de "Nuevo producto" como multipart/form-data: el backend
- * recibe la imagen, la pasa por la red neuronal (Transfer Learning) y devuelve
- * el producto guardado junto con la categoría que predijo la IA.
- */
 export async function createProduct(
-  input: NewProductInput
+  input: NewProductInput,
 ): Promise<CreateProductResponse> {
   const formData = new FormData();
   formData.append("nombre", input.nombre);
@@ -53,12 +42,11 @@ export async function createProduct(
   const { data } = await api.post<CreateProductResponse>(
     "/api/productos",
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return data;
 }
 
-/** Payload para editar un producto existente. La imagen es opcional: si no se reemplaza, el backend conserva la actual. */
 export interface UpdateProductInput {
   nombre: string;
   precio: number;
@@ -70,7 +58,7 @@ export interface UpdateProductInput {
 
 export async function updateProduct(
   id: string,
-  input: UpdateProductInput
+  input: UpdateProductInput,
 ): Promise<Product> {
   const formData = new FormData();
   formData.append("nombre", input.nombre);
