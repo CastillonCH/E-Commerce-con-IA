@@ -197,4 +197,165 @@ export const MOCK_PRODUCTS: Product[] = [
     descripcion:
       "Canasta con productos básicos de abarrotes para el hogar: arroz, aceite, azúcar, fideos y más. Pensada para abastecer a una familia durante la semana.",
   },
+  {
+    id: "13",
+    nombre: "Sofá Modular 3 Cuerpos",
+    precio: 1899.0,
+    precioOriginal: 2299.0,
+    stock: 6,
+    marca: "HogarPlus",
+    departamento: "Hogar",
+    imagen_url:
+      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Muebles",
+    rating: 4.5,
+    numResenas: 41,
+    envioGratis: true,
+    descripcion:
+      "Sofá modular de 3 cuerpos tapizado en tela antimanchas, estructura de madera reforzada y cojines de espuma de alta densidad. Se adapta a espacios pequeños o grandes gracias a su diseño modular.",
+  },
+  {
+    id: "14",
+    nombre: "Set de Velas Aromáticas",
+    precio: 59.9,
+    stock: 50,
+    marca: "HogarPlus",
+    departamento: "Hogar",
+    imagen_url:
+      "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Decoración y menaje",
+    rating: 4.6,
+    numResenas: 88,
+    descripcion:
+      "Set de 3 velas aromáticas en cera de soja, aromas a vainilla, lavanda y madera de cedro. Hasta 30 horas de combustión cada una, ideales para decorar y ambientar cualquier espacio.",
+  },
+  {
+    id: "15",
+    nombre: "Polo Básico Algodón Pima",
+    precio: 49.9,
+    stock: 80,
+    marca: "UrbanWear",
+    departamento: "Moda",
+    imagen_url:
+      "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Polos y camisas",
+    rating: 4.4,
+    numResenas: 203,
+    envioGratis: true,
+    descripcion:
+      "Polo de algodón pima 100%, corte regular y cuello redondo. Suave al tacto, transpirable y resistente a los lavados frecuentes. Disponible en varios colores.",
+  },
+  {
+    id: "16",
+    nombre: "Conjunto Deportivo Training",
+    precio: 129.9,
+    precioOriginal: 169.9,
+    stock: 35,
+    marca: "ProSport",
+    departamento: "Deportes",
+    imagen_url:
+      "https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Ropa deportiva",
+    rating: 4.5,
+    numResenas: 97,
+    esNuevo: true,
+    descripcion:
+      "Conjunto deportivo de polera y short en tela dry-fit que absorbe el sudor y se seca rápido. Ideal para entrenar en el gimnasio o al aire libre.",
+  },
+  {
+    id: "17",
+    nombre: "Set de Mancuernas Ajustables",
+    precio: 349.9,
+    stock: 14,
+    marca: "ProSport",
+    departamento: "Deportes",
+    imagen_url:
+      "https://images.unsplash.com/photo-1584735175315-9d5df23860e6?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Equipos de fitness",
+    rating: 4.7,
+    numResenas: 65,
+    envioGratis: true,
+    descripcion:
+      "Par de mancuernas ajustables de 2 a 20 kg cada una, con sistema de cambio rápido de peso. Reemplazan hasta 10 pares de mancuernas fijas.",
+  },
+  {
+    id: "18",
+    nombre: "Paleta de Sombras Profesional",
+    precio: 89.9,
+    precioOriginal: 119.9,
+    stock: 40,
+    marca: "GlowBeauty",
+    departamento: "Belleza",
+    imagen_url:
+      "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Maquillaje",
+    rating: 4.8,
+    numResenas: 176,
+    esNuevo: true,
+    descripcion:
+      "Paleta con 18 tonos mate y shimmer, alta pigmentación y larga duración. Incluye tonos neutros y vibrantes para looks de día y de noche.",
+  },
+  {
+    id: "19",
+    nombre: "Oso de Peluche Gigante",
+    precio: 79.9,
+    stock: 25,
+    marca: "KidsWorld",
+    departamento: "Juguetes",
+    imagen_url:
+      "https://images.unsplash.com/photo-1559454403-b8fb88521f11?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Peluches",
+    rating: 4.9,
+    numResenas: 58,
+    envioGratis: true,
+    descripcion:
+      "Oso de peluche de 80cm, relleno hipoalergénico y tela ultra suave. Un regalo clásico para bebés y niños de cualquier edad.",
+  },
+  {
+    id: "20",
+    nombre: "Auto de Juguete a Control Remoto",
+    precio: 99.9,
+    precioOriginal: 139.9,
+    stock: 30,
+    marca: "KidsWorld",
+    departamento: "Juguetes",
+    imagen_url:
+      "https://images.unsplash.com/photo-1594787318286-3d835c1d207f?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Vehículos de juguete",
+    rating: 4.5,
+    numResenas: 84,
+    descripcion:
+      "Auto a control remoto con batería recargable, velocidad de hasta 15 km/h y neumáticos todo terreno. Incluye control remoto de 2.4GHz.",
+  },
+  {
+    id: "21",
+    nombre: "Pack de Bebidas Rehidratantes",
+    precio: 39.9,
+    stock: 120,
+    marca: "MercaFresh",
+    departamento: "Supermercado",
+    imagen_url:
+      "https://images.unsplash.com/photo-1544145945-f90425340c7e?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Bebidas",
+    rating: 4.3,
+    numResenas: 47,
+    envioGratis: true,
+    descripcion:
+      "Pack de 12 unidades de bebida rehidratante en sabores surtidos. Repone electrolitos y aporta energía para el día a día o después del ejercicio.",
+  },
+  {
+    id: "22",
+    nombre: "Kit de Limpieza del Hogar",
+    precio: 69.9,
+    stock: 55,
+    marca: "MercaFresh",
+    departamento: "Supermercado",
+    imagen_url:
+      "https://images.unsplash.com/photo-1585421514738-01798e348b17?q=80&w=800&auto=format&fit=crop",
+    categoria_ia: "Limpieza del hogar",
+    rating: 4.4,
+    numResenas: 39,
+    descripcion:
+      "Kit con desinfectante multiusos, limpiavidrios, paños de microfibra y guantes. Todo lo necesario para una limpieza profunda del hogar.",
+  },
 ];
