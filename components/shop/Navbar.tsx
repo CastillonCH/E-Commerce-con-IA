@@ -84,8 +84,14 @@ export function Navbar({ session }: NavbarProps) {
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex">
-          {DEPARTAMENTOS.map((departamento) => {
+          {DEPARTAMENTOS.map((departamento, index) => {
             const isOpen = openDept === departamento;
+            const align =
+              index <= 1
+                ? "left"
+                : index >= DEPARTAMENTOS.length - 2
+                  ? "right"
+                  : "center";
             return (
               <div
                 key={departamento}
@@ -106,7 +112,9 @@ export function Navbar({ session }: NavbarProps) {
                     )}
                   />
                 </Link>
-                {isOpen && <DepartmentMegaMenu departamento={departamento} />}
+                {isOpen && (
+                  <DepartmentMegaMenu departamento={departamento} align={align} />
+                )}
               </div>
             );
           })}

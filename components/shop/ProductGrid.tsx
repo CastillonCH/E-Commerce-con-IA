@@ -4,12 +4,14 @@ import { ProductCard } from "@/components/shop/ProductCard";
 interface ProductGridProps {
   q?: string;
   categoria?: string;
+  subcategoria?: string;
   soloNuevos?: boolean;
 }
 
 export async function ProductGrid({
   q,
   categoria,
+  subcategoria,
   soloNuevos,
 }: ProductGridProps) {
   const products = MOCK_PRODUCTS.filter((product) => {
@@ -20,8 +22,13 @@ export async function ProductGrid({
     const matchesCategoria = categoria
       ? product.departamento === categoria
       : true;
+    const matchesSubcategoria = subcategoria
+      ? product.categoria_ia === subcategoria
+      : true;
     const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
-    return matchesQuery && matchesCategoria && matchesNuevo;
+    return (
+      matchesQuery && matchesCategoria && matchesSubcategoria && matchesNuevo
+    );
   });
 
   if (products.length === 0) {

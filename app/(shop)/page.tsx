@@ -6,25 +6,32 @@ import { ProductCarousel } from "@/components/shop/ProductCarousel";
 import { MOCK_PRODUCTS } from "@/lib/mock-products";
 
 interface HomeProps {
-  searchParams: Promise<{ q?: string; categoria?: string; nuevo?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    categoria?: string;
+    subcategoria?: string;
+    nuevo?: string;
+  }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { q, categoria, nuevo } = await searchParams;
+  const { q, categoria, subcategoria, nuevo } = await searchParams;
   const soloNuevos = nuevo === "1";
 
-  const mostrarVitrina = !q && !categoria && !soloNuevos;
+  const mostrarVitrina = !q && !categoria && !subcategoria && !soloNuevos;
 
   const ofertas = MOCK_PRODUCTS.filter(
     (p) => p.precioOriginal && p.precioOriginal > p.precio,
   );
   const nuevos = MOCK_PRODUCTS.filter((p) => p.esNuevo);
 
-  const titulo = categoria
-    ? categoria
-    : soloNuevos
-      ? "Recién llegados"
-      : "Productos destacados";
+  const titulo = subcategoria
+    ? subcategoria
+    : categoria
+      ? categoria
+      : soloNuevos
+        ? "Recién llegados"
+        : "Productos destacados";
 
   return (
     <>
@@ -52,7 +59,12 @@ export default async function Home({ searchParams }: HomeProps) {
       >
         <h2 className="mb-6 text-xl font-semibold text-slate-900">{titulo}</h2>
         <Suspense fallback={<ProductGridSkeleton />}>
-          <ProductGrid q={q} categoria={categoria} soloNuevos={soloNuevos} />
+          <ProductGrid
+            q={q}
+            categoria={categoria}
+            subcategoria={subcategoria}
+            soloNuevos={soloNuevos}
+          />
         </Suspense>
       </section>
     </>
