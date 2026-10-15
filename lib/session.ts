@@ -1,6 +1,7 @@
 import "server-only";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { UserRole } from "@/types";
+import { getServerEnv } from "@/lib/env.server";
 
 /**
  * Único lugar que firma/verifica el JWT de sesión. Cuando exista el backend
@@ -22,13 +23,8 @@ export interface SessionPayload {
 }
 
 function getSecretKey(): Uint8Array {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "AUTH_SECRET no está definido o tiene menos de 32 caracteres. Defínelo en .env.local (ver .env.example).",
-    );
-  }
-  return new TextEncoder().encode(secret);
+  const { AUTH_SECRET } = getServerEnv();
+  return new TextEncoder().encode(AUTH_SECRET);
 }
 
 function isSessionPayload(

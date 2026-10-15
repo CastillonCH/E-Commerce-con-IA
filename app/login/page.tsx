@@ -62,7 +62,7 @@ function AuthForm() {
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 pt-6 sm:px-6">
+      <header className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 pt-6 sm:px-6">
         <Link
           href="/"
           aria-label="Volver a la tienda"
@@ -76,9 +76,12 @@ function AuthForm() {
         >
           Nova<span className="text-brand">Store</span>
         </Link>
-      </div>
+      </header>
 
-      <div className="flex flex-1 justify-center px-4 pt-12 pb-10 sm:pt-20">
+      <main
+        id="main-content"
+        className="flex flex-1 justify-center px-4 pt-12 pb-10 sm:pt-20"
+      >
         <div className="w-full max-w-sm">
           <div className="mb-6 flex rounded-full bg-slate-100 p-1">
             <button
@@ -88,7 +91,7 @@ function AuthForm() {
                 "flex-1 rounded-full py-2 text-sm font-semibold transition-colors",
                 tab === "login"
                   ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500",
+                  : "text-slate-600",
               )}
             >
               Iniciar sesión
@@ -100,7 +103,7 @@ function AuthForm() {
                 "flex-1 rounded-full py-2 text-sm font-semibold transition-colors",
                 tab === "register"
                   ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500",
+                  : "text-slate-600",
               )}
             >
               Crear cuenta
@@ -189,7 +192,7 @@ function AuthForm() {
             Al continuar aceptas nuestros Términos y Política de Privacidad.
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
