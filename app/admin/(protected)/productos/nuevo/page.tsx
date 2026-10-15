@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { DEPARTAMENTOS } from "@/types";
+import { DEPARTAMENTOS } from "@/lib/taxonomy";
 import { createProduct, getApiErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { FieldError, Input, Label, Select } from "@/components/ui/Input";

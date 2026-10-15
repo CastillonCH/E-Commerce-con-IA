@@ -15,7 +15,7 @@ export function ProductDetailActions({ product }: { product: Product }) {
   const agotado = product.stock === 0;
 
   function addToCart() {
-    for (let i = 0; i < cantidad; i++) addItem(product);
+    addItem(product, cantidad);
     toast.success(`${product.nombre} añadido al carrito`);
   }
 

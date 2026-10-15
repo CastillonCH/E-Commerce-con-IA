@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Star, Truck, ShieldCheck } from "lucide-react";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { getProductById, listRelacionados } from "@/lib/data/products-repo";
 import { formatCurrency, discountPercent } from "@/lib/utils";
 import { ProductDetailActions } from "@/components/shop/ProductDetailActions";
 import { ProductCarousel } from "@/components/shop/ProductCarousel";
@@ -12,16 +12,14 @@ interface ProductPageProps {
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
-  const product = MOCK_PRODUCTS.find((p) => p.id === id);
+  const product = await getProductById(id);
 
   if (!product) {
     notFound();
   }
 
   const discount = discountPercent(product.precio, product.precioOriginal);
-  const relacionados = MOCK_PRODUCTS.filter(
-    (p) => p.departamento === product.departamento && p.id !== product.id,
-  );
+  const relacionados = await listRelacionados(product);
 
   return (
     <div className="flex-1">

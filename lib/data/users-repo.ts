@@ -15,6 +15,9 @@ export interface UserRecord {
 const DEMO_PASSWORD_HASH =
   "$2b$10$v8PnupzVov1yACqp9VARYu9bqJzOLLE9rAxuWZu3KY0ZvZeeri0du";
 
+// El `nombre` de cada vendedor es exactamente su marca (coincide con
+// `Product.marca` en lib/data/products-repo.ts): es como se restringe el
+// catálogo que ve cada vendedor en /admin/productos (ver listByMarca).
 const SEED_STAFF: Omit<UserRecord, "passwordHash">[] = [
   {
     id: "u-admin-1",
@@ -32,7 +35,7 @@ const SEED_STAFF: Omit<UserRecord, "passwordHash">[] = [
   },
   {
     id: "u-seller-1",
-    nombre: "SoundMax Perú",
+    nombre: "SoundMax",
     email: "contacto@soundmax.pe",
     role: "SELLER",
     fechaRegistro: "2026-01-15",
@@ -216,4 +219,8 @@ export async function promoteToSeller(input: {
 
 export async function listClients(): Promise<UserRecord[]> {
   return users.filter((u) => u.role === "CLIENT");
+}
+
+export async function listSellers(): Promise<UserRecord[]> {
+  return users.filter((u) => u.role === "SELLER");
 }

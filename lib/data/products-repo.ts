@@ -1,6 +1,10 @@
+import "server-only";
 import type { Product } from "@/types";
 
-export const MOCK_PRODUCTS: Product[] = [
+// Estado en memoria: catálogo semilla hasta que el backend real (FastAPI +
+// PostgreSQL) quede conectado. Único punto de lectura de productos — antes
+// cada página/componente importaba MOCK_PRODUCTS por su cuenta.
+const products: Product[] = [
   {
     id: "1",
     nombre: "Audífonos Inalámbricos Pro",
@@ -359,3 +363,54 @@ export const MOCK_PRODUCTS: Product[] = [
       "Kit con desinfectante multiusos, limpiavidrios, paños de microfibra y guantes. Todo lo necesario para una limpieza profunda del hogar.",
   },
 ];
+
+export interface ProductFilters {
+  q?: string;
+  departamento?: string;
+  categoria?: string;
+  soloNuevos?: boolean;
+}
+
+export async function listProducts(
+  filters: ProductFilters = {},
+): Promise<Product[]> {
+  const { q, departamento, categoria, soloNuevos } = filters;
+  return products.filter((product) => {
+    const matchesQuery = q
+      ? product.nombre.toLowerCase().includes(q.toLowerCase()) ||
+        product.marca.toLowerCase().includes(q.toLowerCase())
+      : true;
+    const matchesDepartamento = departamento
+      ? product.departamento === departamento
+      : true;
+    const matchesCategoria = categoria
+      ? product.categoria_ia === categoria
+      : true;
+    const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
+    return (
+      matchesQuery && matchesDepartamento && matchesCategoria && matchesNuevo
+    );
+  });
+}
+
+export async function getProductById(id: string): Promise<Product | null> {
+  return products.find((p) => p.id === id) ?? null;
+}
+
+export async function listOfertas(): Promise<Product[]> {
+  return products.filter((p) => p.precioOriginal && p.precioOriginal > p.precio);
+}
+
+export async function listNuevos(): Promise<Product[]> {
+  return products.filter((p) => Boolean(p.esNuevo));
+}
+
+export async function listRelacionados(product: Product): Promise<Product[]> {
+  return products.filter(
+    (p) => p.departamento === product.departamento && p.id !== product.id,
+  );
+}
+
+export async function listByMarca(marca: string): Promise<Product[]> {
+  return products.filter((p) => p.marca.toLowerCase() === marca.toLowerCase());
+}

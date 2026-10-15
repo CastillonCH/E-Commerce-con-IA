@@ -2,17 +2,18 @@ import { Navbar } from "@/components/shop/Navbar";
 import { Footer } from "@/components/shop/Footer";
 import { AssistantWidget } from "@/components/shop/AssistantWidget";
 import { getSession } from "@/lib/auth";
+import { listProducts } from "@/lib/data/products-repo";
 
 export default async function ShopLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
+  const [session, products] = await Promise.all([getSession(), listProducts()]);
 
   return (
     <div className="flex flex-1 flex-col">
-      <Navbar session={session} />
+      <Navbar session={session} products={products} />
       <main className="flex flex-1 flex-col">{children}</main>
       <Footer />
       <AssistantWidget />

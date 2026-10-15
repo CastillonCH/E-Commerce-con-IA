@@ -1,4 +1,4 @@
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { listProducts } from "@/lib/data/products-repo";
 import { ProductCard } from "@/components/shop/ProductCard";
 
 interface ProductGridProps {
@@ -14,21 +14,11 @@ export async function ProductGrid({
   subcategoria,
   soloNuevos,
 }: ProductGridProps) {
-  const products = MOCK_PRODUCTS.filter((product) => {
-    const matchesQuery = q
-      ? product.nombre.toLowerCase().includes(q.toLowerCase()) ||
-        product.marca.toLowerCase().includes(q.toLowerCase())
-      : true;
-    const matchesCategoria = categoria
-      ? product.departamento === categoria
-      : true;
-    const matchesSubcategoria = subcategoria
-      ? product.categoria_ia === subcategoria
-      : true;
-    const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
-    return (
-      matchesQuery && matchesCategoria && matchesSubcategoria && matchesNuevo
-    );
+  const products = await listProducts({
+    q,
+    departamento: categoria,
+    categoria: subcategoria,
+    soloNuevos,
   });
 
   if (products.length === 0) {

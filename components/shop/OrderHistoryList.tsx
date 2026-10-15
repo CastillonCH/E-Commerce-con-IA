@@ -1,20 +1,10 @@
-"use client";
-
 import Image from "next/image";
 import { PackageSearch } from "lucide-react";
-import { useOrdersStore } from "@/store/orders-store";
-import { useHasMounted } from "@/hooks/useHasMounted";
+import type { Order } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { OrderStatusBadge } from "@/components/shop/OrderStatusBadge";
 
-export function OrderHistoryList({ email }: { email: string }) {
-  const mounted = useHasMounted();
-  const orders = useOrdersStore((state) => state.orders).filter(
-    (order) => order.clienteEmail === email,
-  );
-
-  if (!mounted) return null;
-
+export function OrderHistoryList({ orders }: { orders: Order[] }) {
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 py-16 text-center">

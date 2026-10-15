@@ -3,7 +3,7 @@ import { HeroSection } from "@/components/shop/HeroSection";
 import { BenefitsStrip } from "@/components/shop/BenefitsStrip";
 import { ProductGrid } from "@/components/shop/ProductGrid";
 import { ProductCarousel } from "@/components/shop/ProductCarousel";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { listOfertas, listNuevos } from "@/lib/data/products-repo";
 
 interface HomeProps {
   searchParams: Promise<{
@@ -20,10 +20,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const mostrarVitrina = !q && !categoria && !subcategoria && !soloNuevos;
 
-  const ofertas = MOCK_PRODUCTS.filter(
-    (p) => p.precioOriginal && p.precioOriginal > p.precio,
-  );
-  const nuevos = MOCK_PRODUCTS.filter((p) => p.esNuevo);
+  const [ofertas, nuevos] = await Promise.all([listOfertas(), listNuevos()]);
 
   const titulo = subcategoria
     ? subcategoria

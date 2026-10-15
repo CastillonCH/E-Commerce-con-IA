@@ -21,7 +21,8 @@ import {
   ShoppingBasket,
   type LucideIcon,
 } from "lucide-react";
-import { DEPARTAMENTOS, type Departamento } from "@/types";
+import type { Product } from "@/types";
+import { DEPARTAMENTOS, type Departamento } from "@/lib/taxonomy";
 import type { Session } from "@/lib/auth";
 import { useCartStore } from "@/store/cart-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
@@ -40,9 +41,10 @@ const DEPARTMENT_ICONS: Record<Departamento, LucideIcon> = {
 
 interface NavbarProps {
   session: Session | null;
+  products: Product[];
 }
 
-export function Navbar({ session }: NavbarProps) {
+export function Navbar({ session, products }: NavbarProps) {
   const totalItems = useCartStore((state) => state.totalItems());
   const mounted = useHasMounted();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -113,7 +115,11 @@ export function Navbar({ session }: NavbarProps) {
                   />
                 </Link>
                 {isOpen && (
-                  <DepartmentMegaMenu departamento={departamento} align={align} />
+                  <DepartmentMegaMenu
+                    departamento={departamento}
+                    products={products}
+                    align={align}
+                  />
                 )}
               </div>
             );

@@ -3,14 +3,15 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { toast } from "sonner";
 import { CreditCard, Smartphone, Truck as TruckIcon } from "lucide-react";
 import type { PaymentMethod } from "@/types";
 import { useCartStore } from "@/store/cart-store";
-import { useOrdersStore } from "@/store/orders-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
+import { placeOrder } from "@/app/(shop)/checkout/actions";
 
 const PAYMENT_OPTIONS: {
   value: PaymentMethod;
@@ -24,19 +25,14 @@ const PAYMENT_OPTIONS: {
 
 interface CheckoutFormProps {
   nombreInicial: string;
-  emailInicial: string;
 }
 
-export function CheckoutForm({
-  nombreInicial,
-  emailInicial,
-}: CheckoutFormProps) {
+export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
   const router = useRouter();
   const mounted = useHasMounted();
   const items = useCartStore((state) => state.items);
   const totalPrice = useCartStore((state) => state.totalPrice());
   const clearCart = useCartStore((state) => state.clear);
-  const addOrder = useOrdersStore((state) => state.addOrder);
 
   const [nombre, setNombre] = useState(nombreInicial);
   const [direccion, setDireccion] = useState("");
@@ -45,16 +41,11 @@ export function CheckoutForm({
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>("tarjeta");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setIsSubmitting(true);
 
-    const orderId = `PED-${Date.now().toString().slice(-8)}`;
-    addOrder({
-      id: orderId,
-      fecha: new Date().toISOString(),
-      clienteNombre: nombre,
-      clienteEmail: emailInicial,
+    const result = await placeOrder({
       direccion: { nombre, direccion, ciudad, telefono },
       metodoPago,
       items: items.map((item) => ({
@@ -64,12 +55,16 @@ export function CheckoutForm({
         precio: item.product.precio,
         cantidad: item.cantidad,
       })),
-      total: totalPrice,
-      estado: "pendiente",
     });
 
+    if (!result.success || !result.orderId) {
+      setIsSubmitting(false);
+      toast.error(result.error ?? "No se pudo confirmar el pedido.");
+      return;
+    }
+
     clearCart();
-    router.push(`/checkout/confirmacion?pedido=${orderId}`);
+    router.push(`/checkout/confirmacion?pedido=${result.orderId}`);
   }
 
   if (!mounted) return null;

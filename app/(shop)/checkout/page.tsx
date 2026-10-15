@@ -27,7 +27,7 @@ export default async function CheckoutPage() {
       <h1 className="mb-8 text-xl font-semibold text-slate-900">
         Finalizar compra
       </h1>
-      <CheckoutForm nombreInicial={session.name} emailInicial={session.email} />
+      <CheckoutForm nombreInicial={session.name} />
     </div>
   );
 }

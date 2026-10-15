@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { PackageSearch } from "lucide-react";
-import { useOrdersStore } from "@/store/orders-store";
-import { useHasMounted } from "@/hooks/useHasMounted";
 import { formatCurrency } from "@/lib/utils";
-import type { OrderStatus } from "@/types";
+import type { Order, OrderStatus } from "@/types";
 import { OrderStatusBadge } from "@/components/shop/OrderStatusBadge";
+import { updateOrderStatusAction } from "@/app/admin/(protected)/pedidos/actions";
 
 const STATUS_OPTIONS: OrderStatus[] = [
   "pendiente",
@@ -14,12 +16,20 @@ const STATUS_OPTIONS: OrderStatus[] = [
   "cancelado",
 ];
 
-export function AdminOrdersTable() {
-  const mounted = useHasMounted();
-  const orders = useOrdersStore((state) => state.orders);
-  const updateStatus = useOrdersStore((state) => state.updateStatus);
+export function AdminOrdersTable({ orders }: { orders: Order[] }) {
+  const router = useRouter();
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  if (!mounted) return null;
+  async function handleStatusChange(orderId: string, estado: OrderStatus) {
+    setUpdatingId(orderId);
+    const result = await updateOrderStatusAction({ orderId, estado });
+    setUpdatingId(null);
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo actualizar el pedido.");
+      return;
+    }
+    router.refresh();
+  }
 
   if (orders.length === 0) {
     return (
@@ -74,11 +84,15 @@ export function AdminOrdersTable() {
                   <OrderStatusBadge estado={order.estado} />
                   <select
                     value={order.estado}
+                    disabled={updatingId === order.id}
                     onChange={(event) =>
-                      updateStatus(order.id, event.target.value as OrderStatus)
+                      handleStatusChange(
+                        order.id,
+                        event.target.value as OrderStatus,
+                      )
                     }
                     aria-label={`Cambiar estado del pedido ${order.id}`}
-                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-slate-900"
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-slate-900 disabled:opacity-50"
                   >
                     {STATUS_OPTIONS.map((status) => (
                       <option key={status} value={status}>

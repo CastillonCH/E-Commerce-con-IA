@@ -4,7 +4,7 @@ import type { CartItem, Product } from "@/types";
 
 interface CartState {
   items: CartItem[];
-  addItem: (product: Product) => void;
+  addItem: (product: Product, cantidad?: number) => void;
   removeItem: (productId: string) => void;
   clear: () => void;
   totalItems: () => number;
@@ -15,7 +15,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
-      addItem: (product) =>
+      addItem: (product, cantidad = 1) =>
         set((state) => {
           const existing = state.items.find(
             (item) => item.product.id === product.id,
@@ -24,12 +24,12 @@ export const useCartStore = create<CartState>()(
             return {
               items: state.items.map((item) =>
                 item.product.id === product.id
-                  ? { ...item, cantidad: item.cantidad + 1 }
+                  ? { ...item, cantidad: item.cantidad + cantidad }
                   : item,
               ),
             };
           }
-          return { items: [...state.items, { product, cantidad: 1 }] };
+          return { items: [...state.items, { product, cantidad }] };
         }),
       removeItem: (productId) =>
         set((state) => ({
