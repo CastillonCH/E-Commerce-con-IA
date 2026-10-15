@@ -23,7 +23,7 @@ export function DepartmentMegaMenu({
   align?: MegaMenuAlign;
 }) {
   const categorias = CATEGORIAS_IA[departamento];
-  const departamentoHref = `/?categoria=${encodeURIComponent(departamento)}`;
+  const departamentoHref = `/?departamento=${encodeURIComponent(departamento)}`;
 
   return (
     <div
@@ -40,7 +40,7 @@ export function DepartmentMegaMenu({
                 p.departamento === departamento && p.categoria_ia === categoria,
             )
             .slice(0, 2);
-          const categoriaHref = `${departamentoHref}&subcategoria=${encodeURIComponent(categoria)}`;
+          const categoriaHref = `${departamentoHref}&categoria=${encodeURIComponent(categoria)}`;
 
           return (
             <div key={categoria} className="w-40 shrink-0">

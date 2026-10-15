@@ -15,7 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: APP_CONFIG.storeName,
+  metadataBase: new URL(APP_CONFIG.siteUrl),
+  title: {
+    default: APP_CONFIG.storeName,
+    template: `%s · ${APP_CONFIG.storeName}`,
+  },
   description: "E-commerce con clasificación automática de productos por IA",
 };
 

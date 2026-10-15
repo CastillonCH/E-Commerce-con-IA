@@ -102,7 +102,7 @@ export function Navbar({ session, products }: NavbarProps) {
                 onMouseLeave={scheduleCloseDeptMenu}
               >
                 <Link
-                  href={`/?categoria=${departamento}`}
+                  href={`/?departamento=${departamento}`}
                   onClick={() => setOpenDept(null)}
                   className="relative flex items-center px-3 py-2 text-sm font-medium text-slate-800"
                 >
@@ -257,7 +257,7 @@ export function Navbar({ session, products }: NavbarProps) {
               return (
                 <Link
                   key={departamento}
-                  href={`/?categoria=${departamento}`}
+                  href={`/?departamento=${departamento}`}
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >

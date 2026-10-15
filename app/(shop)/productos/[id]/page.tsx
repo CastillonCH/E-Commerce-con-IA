@@ -1,13 +1,38 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { Star, Truck, ShieldCheck } from "lucide-react";
 import { getProductById, listRelacionados } from "@/lib/data/products-repo";
 import { formatCurrency, discountPercent } from "@/lib/utils";
+import { APP_CONFIG } from "@/lib/config";
 import { ProductDetailActions } from "@/components/shop/ProductDetailActions";
 import { ProductCarousel } from "@/components/shop/ProductCarousel";
 
 interface ProductPageProps {
   params: Promise<{ id: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: ProductPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const product = await getProductById(id);
+  if (!product) return {};
+
+  const description =
+    product.descripcion ??
+    `${product.nombre} de ${product.marca}. ${formatCurrency(product.precio)}.`;
+
+  return {
+    title: product.nombre,
+    description,
+    alternates: { canonical: `/productos/${product.id}` },
+    openGraph: {
+      title: product.nombre,
+      description,
+      images: [{ url: product.imagen_url }],
+    },
+  };
 }
 
 export default async function ProductPage({ params }: ProductPageProps) {
@@ -21,8 +46,40 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const discount = discountPercent(product.precio, product.precioOriginal);
   const relacionados = await listRelacionados(product);
 
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.nombre,
+    image: [product.imagen_url],
+    description: product.descripcion,
+    brand: { "@type": "Brand", name: product.marca },
+    offers: {
+      "@type": "Offer",
+      url: `${APP_CONFIG.siteUrl}/productos/${product.id}`,
+      priceCurrency: APP_CONFIG.currency,
+      price: product.precio,
+      availability:
+        product.stock > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
+    },
+    ...(product.rating !== undefined && product.numResenas !== undefined
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: product.rating,
+            reviewCount: product.numResenas,
+          },
+        }
+      : {}),
+  };
+
   return (
     <div className="flex-1">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-10 px-4 py-10 sm:px-6 lg:grid-cols-2 lg:py-14">
         <div className="relative mx-auto aspect-square w-full max-w-md overflow-hidden rounded-2xl bg-slate-100">
           <Image
