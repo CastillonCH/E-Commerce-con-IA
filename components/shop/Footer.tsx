@@ -29,10 +29,10 @@ const COLUMNS = [
   {
     title: "Categorías",
     links: [
-      { label: "Electrónica", href: "/?categoria=Electrónica" },
-      { label: "Moda", href: "/?categoria=Moda" },
-      { label: "Hogar", href: "/?categoria=Hogar" },
-      { label: "Deportes", href: "/?categoria=Deportes" },
+      { label: "Electrónica", href: "/?departamento=Electrónica" },
+      { label: "Moda", href: "/?departamento=Moda" },
+      { label: "Hogar", href: "/?departamento=Hogar" },
+      { label: "Deportes", href: "/?departamento=Deportes" },
     ],
   },
 ];

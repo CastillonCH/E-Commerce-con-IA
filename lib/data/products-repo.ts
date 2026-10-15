@@ -1,6 +1,11 @@
+import "server-only";
 import type { Product } from "@/types";
+import { similarity } from "@/lib/similarity";
 
-export const MOCK_PRODUCTS: Product[] = [
+// Estado en memoria: catálogo semilla hasta que el backend real (FastAPI +
+// PostgreSQL) quede conectado. Único punto de lectura de productos — antes
+// cada página/componente importaba MOCK_PRODUCTS por su cuenta.
+const products: Product[] = [
   {
     id: "1",
     nombre: "Audífonos Inalámbricos Pro",
@@ -359,3 +364,164 @@ export const MOCK_PRODUCTS: Product[] = [
       "Kit con desinfectante multiusos, limpiavidrios, paños de microfibra y guantes. Todo lo necesario para una limpieza profunda del hogar.",
   },
 ];
+
+export interface ProductFilters {
+  q?: string;
+  departamento?: string;
+  categoria?: string;
+  soloNuevos?: boolean;
+}
+
+export async function listProducts(
+  filters: ProductFilters = {},
+): Promise<Product[]> {
+  const { q, departamento, categoria, soloNuevos } = filters;
+  return products.filter((product) => {
+    const matchesQuery = q
+      ? product.nombre.toLowerCase().includes(q.toLowerCase()) ||
+        product.marca.toLowerCase().includes(q.toLowerCase())
+      : true;
+    const matchesDepartamento = departamento
+      ? product.departamento === departamento
+      : true;
+    const matchesCategoria = categoria
+      ? product.categoria_ia === categoria
+      : true;
+    const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
+    return (
+      matchesQuery && matchesDepartamento && matchesCategoria && matchesNuevo
+    );
+  });
+}
+
+export async function getProductById(id: string): Promise<Product | null> {
+  return products.find((p) => p.id === id) ?? null;
+}
+
+export async function listOfertas(): Promise<Product[]> {
+  return products.filter((p) => p.precioOriginal && p.precioOriginal > p.precio);
+}
+
+export async function listNuevos(): Promise<Product[]> {
+  return products.filter((p) => Boolean(p.esNuevo));
+}
+
+export async function listRelacionados(product: Product): Promise<Product[]> {
+  return products.filter(
+    (p) => p.departamento === product.departamento && p.id !== product.id,
+  );
+}
+
+export async function listByMarca(marca: string): Promise<Product[]> {
+  return products.filter((p) => p.marca.toLowerCase() === marca.toLowerCase());
+}
+
+export async function addProduct(product: Product): Promise<Product> {
+  products.push(product);
+  return product;
+}
+
+export async function updateProductRecord(
+  id: string,
+  patch: Partial<Product>,
+): Promise<Product | null> {
+  const index = products.findIndex((p) => p.id === id);
+  if (index === -1) return null;
+  products[index] = { ...products[index], ...patch };
+  return products[index];
+}
+
+export async function removeProduct(id: string): Promise<boolean> {
+  const index = products.findIndex((p) => p.id === id);
+  if (index === -1) return false;
+  products.splice(index, 1);
+  return true;
+}
+
+// --- Revisión de clasificaciones de IA con baja confianza -----------------
+//
+// Cuando el backend de IA clasifica un producto nuevo con una confianza por
+// debajo de este umbral, el producto no se publica directamente: entra a
+// esta cola para que un administrador confirme o corrija la categoría antes
+// de que aparezca en la tienda (ver app/admin/(protected)/productos/actions.ts
+// y app/admin/(protected)/revision).
+export const REVIEW_THRESHOLD = 0.75;
+
+export interface PendingReviewEntry {
+  product: Product;
+  aiAccuracy: number;
+  creadoEn: string;
+}
+
+const pendingReview: PendingReviewEntry[] = [];
+
+export async function addPendingReview(
+  product: Product,
+  aiAccuracy: number,
+): Promise<PendingReviewEntry> {
+  const entry: PendingReviewEntry = {
+    product,
+    aiAccuracy,
+    creadoEn: new Date().toISOString(),
+  };
+  pendingReview.push(entry);
+  return entry;
+}
+
+export async function listPendingReview(): Promise<PendingReviewEntry[]> {
+  return pendingReview;
+}
+
+export async function approvePendingReview(
+  productId: string,
+  categoriaFinal?: string,
+): Promise<Product | null> {
+  const index = pendingReview.findIndex(
+    (entry) => entry.product.id === productId,
+  );
+  if (index === -1) return null;
+
+  const { product } = pendingReview[index];
+  const finalProduct = categoriaFinal
+    ? { ...product, categoria_ia: categoriaFinal }
+    : product;
+  pendingReview.splice(index, 1);
+  products.push(finalProduct);
+  return finalProduct;
+}
+
+export async function rejectPendingReview(productId: string): Promise<boolean> {
+  const index = pendingReview.findIndex(
+    (entry) => entry.product.id === productId,
+  );
+  if (index === -1) return false;
+  pendingReview.splice(index, 1);
+  return true;
+}
+
+// --- Detección de posibles duplicados --------------------------------------
+//
+// Compara, dentro de cada marca, los nombres de los productos ya publicados
+// para encontrar pares que probablemente sean el mismo producto cargado dos
+// veces (ver app/admin/(protected)/duplicados).
+export interface DuplicatePair {
+  a: Product;
+  b: Product;
+  score: number;
+}
+
+export async function listPossibleDuplicates(
+  threshold = 0.82,
+): Promise<DuplicatePair[]> {
+  const pairs: DuplicatePair[] = [];
+  for (let i = 0; i < products.length; i++) {
+    for (let j = i + 1; j < products.length; j++) {
+      const a = products[i];
+      const b = products[j];
+      if (a.marca.toLowerCase() !== b.marca.toLowerCase()) continue;
+      const score = similarity(a.nombre, b.nombre);
+      if (score >= threshold) pairs.push({ a, b, score });
+    }
+  }
+  return pairs.sort((x, y) => y.score - x.score);
+}

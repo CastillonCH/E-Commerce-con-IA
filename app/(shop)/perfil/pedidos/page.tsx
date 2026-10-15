@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
+import { listOrdersByEmail } from "@/lib/data/orders-repo";
 import { Button } from "@/components/ui/Button";
 import { OrderHistoryList } from "@/components/shop/OrderHistoryList";
 
@@ -19,6 +20,8 @@ export default async function OrderHistoryPage() {
     );
   }
 
+  const orders = await listOrdersByEmail(session.email);
+
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-10 sm:px-6">
       <Link
@@ -28,7 +31,7 @@ export default async function OrderHistoryPage() {
         ← Volver a mi perfil
       </Link>
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Mis pedidos</h1>
-      <OrderHistoryList email={session.email} />
+      <OrderHistoryList orders={orders} />
     </div>
   );
 }

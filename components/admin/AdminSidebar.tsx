@@ -8,6 +8,8 @@ import {
   Package,
   Users,
   ClipboardList,
+  Sparkles,
+  Copy,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +27,18 @@ const NAV_ITEMS = [
     href: "/admin/pedidos",
     label: "Pedidos",
     icon: ClipboardList,
+    adminOnly: true,
+  },
+  {
+    href: "/admin/revision",
+    label: "Revisión de IA",
+    icon: Sparkles,
+    adminOnly: true,
+  },
+  {
+    href: "/admin/duplicados",
+    label: "Duplicados",
+    icon: Copy,
     adminOnly: true,
   },
   { href: "/admin/clientes", label: "Clientes", icon: Users, adminOnly: true },

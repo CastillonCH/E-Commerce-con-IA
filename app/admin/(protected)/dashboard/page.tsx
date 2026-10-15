@@ -1,20 +1,47 @@
 import Link from "next/link";
-import { Package, PackagePlus, TrendingUp, Users, Store } from "lucide-react";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import {
+  Package,
+  PackagePlus,
+  TrendingUp,
+  Users,
+  Store,
+  Sparkles,
+  Copy,
+} from "lucide-react";
+import {
+  listProducts,
+  listPendingReview,
+  listPossibleDuplicates,
+} from "@/lib/data/products-repo";
+import { listOrders } from "@/lib/data/orders-repo";
+import { listSellers } from "@/lib/data/users-repo";
 import { formatCurrency } from "@/lib/utils";
 
-const STATS = [
-  { label: "Productos activos", value: MOCK_PRODUCTS.length, icon: Package },
-  {
-    label: "Stock total",
-    value: MOCK_PRODUCTS.reduce((sum, p) => sum + p.stock, 0),
-    icon: TrendingUp,
-  },
-  { label: "Vendedores activos", value: 3, icon: Store },
-  { label: "Ventas del mes", value: formatCurrency(48250), icon: Users },
-];
+export default async function AdminDashboardPage() {
+  const [products, orders, sellers, pendingReview, duplicates] =
+    await Promise.all([
+      listProducts(),
+      listOrders(),
+      listSellers(),
+      listPendingReview(),
+      listPossibleDuplicates(),
+    ]);
 
-export default function AdminDashboardPage() {
+  const stats = [
+    { label: "Productos activos", value: products.length, icon: Package },
+    {
+      label: "Stock total",
+      value: products.reduce((sum, p) => sum + p.stock, 0),
+      icon: TrendingUp,
+    },
+    { label: "Vendedores activos", value: sellers.length, icon: Store },
+    {
+      label: "Ventas totales",
+      value: formatCurrency(orders.reduce((sum, o) => sum + o.total, 0)),
+      icon: Users,
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -38,7 +65,7 @@ export default function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STATS.map(({ label, value, icon: Icon }) => (
+        {stats.map(({ label, value, icon: Icon }) => (
           <div
             key={label}
             className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5"
@@ -54,22 +81,63 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link
+          href="/admin/revision"
+          className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          <div className="rounded-lg bg-amber-50 p-3">
+            <Sparkles className="h-5 w-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">
+              {pendingReview.length}
+            </p>
+            <p className="text-sm text-slate-500">
+              Producto{pendingReview.length === 1 ? "" : "s"} pendiente
+              {pendingReview.length === 1 ? "" : "s"} de revisión de IA
+            </p>
+          </div>
+        </Link>
+        <Link
+          href="/admin/duplicados"
+          className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          <div className="rounded-lg bg-blue-50 p-3">
+            <Copy className="h-5 w-5 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">
+              {duplicates.length}
+            </p>
+            <p className="text-sm text-slate-500">
+              Posible{duplicates.length === 1 ? "" : "s"} duplicado
+              {duplicates.length === 1 ? "" : "s"} detectado
+              {duplicates.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        </Link>
+      </div>
+
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">
           Últimos productos clasificados por IA
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[480px] text-left text-sm">
+            <caption className="sr-only">
+              Últimos productos clasificados por IA
+            </caption>
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-2 pr-4 font-medium">Producto</th>
-                <th className="py-2 pr-4 font-medium">Departamento</th>
-                <th className="py-2 pr-4 font-medium">Categoría IA</th>
-                <th className="py-2 font-medium">Stock</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Producto</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Departamento</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Categoría IA</th>
+                <th scope="col" className="py-2 font-medium">Stock</th>
               </tr>
             </thead>
             <tbody>
-              {MOCK_PRODUCTS.slice(0, 5).map((product) => (
+              {products.slice(0, 5).map((product) => (
                 <tr
                   key={product.id}
                   className="border-b border-slate-100 text-slate-700"

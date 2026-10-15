@@ -3,32 +3,31 @@ import { HeroSection } from "@/components/shop/HeroSection";
 import { BenefitsStrip } from "@/components/shop/BenefitsStrip";
 import { ProductGrid } from "@/components/shop/ProductGrid";
 import { ProductCarousel } from "@/components/shop/ProductCarousel";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { listOfertas, listNuevos } from "@/lib/data/products-repo";
 
 interface HomeProps {
   searchParams: Promise<{
     q?: string;
+    departamento?: string;
     categoria?: string;
-    subcategoria?: string;
     nuevo?: string;
+    page?: string;
   }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { q, categoria, subcategoria, nuevo } = await searchParams;
+  const { q, departamento, categoria, nuevo, page } = await searchParams;
   const soloNuevos = nuevo === "1";
+  const currentPage = Math.max(1, Number(page) || 1);
 
-  const mostrarVitrina = !q && !categoria && !subcategoria && !soloNuevos;
+  const mostrarVitrina = !q && !departamento && !categoria && !soloNuevos;
 
-  const ofertas = MOCK_PRODUCTS.filter(
-    (p) => p.precioOriginal && p.precioOriginal > p.precio,
-  );
-  const nuevos = MOCK_PRODUCTS.filter((p) => p.esNuevo);
+  const [ofertas, nuevos] = await Promise.all([listOfertas(), listNuevos()]);
 
-  const titulo = subcategoria
-    ? subcategoria
-    : categoria
-      ? categoria
+  const titulo = categoria
+    ? categoria
+    : departamento
+      ? departamento
       : soloNuevos
         ? "Recién llegados"
         : "Productos destacados";
@@ -61,9 +60,10 @@ export default async function Home({ searchParams }: HomeProps) {
         <Suspense fallback={<ProductGridSkeleton />}>
           <ProductGrid
             q={q}
+            departamento={departamento}
             categoria={categoria}
-            subcategoria={subcategoria}
             soloNuevos={soloNuevos}
+            page={currentPage}
           />
         </Suspense>
       </section>

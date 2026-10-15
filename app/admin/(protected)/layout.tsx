@@ -13,7 +13,10 @@ export default async function AdminLayout({
   return (
     <div className="flex flex-1">
       <AdminSidebar session={session} />
-      <main className="flex-1 overflow-x-hidden bg-slate-50 p-6 sm:p-8">
+      <main
+        id="main-content"
+        className="flex-1 overflow-x-hidden bg-slate-50 p-6 sm:p-8"
+      >
         {children}
       </main>
     </div>

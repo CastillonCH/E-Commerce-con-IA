@@ -1,8 +1,21 @@
 import { Users } from "lucide-react";
-import { MOCK_CLIENTS } from "@/lib/mock-clients";
+import { listClients } from "@/lib/data/users-repo";
+import { listOrders } from "@/lib/data/orders-repo";
 import { formatCurrency } from "@/lib/utils";
 
-export default function AdminClientsPage() {
+export default async function AdminClientsPage() {
+  const [clients, orders] = await Promise.all([listClients(), listOrders()]);
+  const clientRows = clients.map((client) => {
+    const pedidosCliente = orders.filter(
+      (order) => order.clienteEmail.toLowerCase() === client.email.toLowerCase(),
+    );
+    return {
+      ...client,
+      pedidos: pedidosCliente.length,
+      totalGastado: pedidosCliente.reduce((sum, order) => sum + order.total, 0),
+    };
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -14,16 +27,17 @@ export default function AdminClientsPage() {
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[640px] text-left text-sm">
+          <caption className="sr-only">Lista de clientes registrados</caption>
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
-              <th className="px-4 py-3 font-medium">Cliente</th>
-              <th className="px-4 py-3 font-medium">Registrado</th>
-              <th className="px-4 py-3 font-medium">Pedidos</th>
-              <th className="px-4 py-3 font-medium">Total gastado</th>
+              <th scope="col" className="px-4 py-3 font-medium">Cliente</th>
+              <th scope="col" className="px-4 py-3 font-medium">Registrado</th>
+              <th scope="col" className="px-4 py-3 font-medium">Pedidos</th>
+              <th scope="col" className="px-4 py-3 font-medium">Total gastado</th>
             </tr>
           </thead>
           <tbody>
-            {MOCK_CLIENTS.map((client) => (
+            {clientRows.map((client) => (
               <tr
                 key={client.id}
                 className="border-b border-slate-100 text-slate-700 last:border-0"

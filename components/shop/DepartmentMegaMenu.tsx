@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ChevronRight } from "lucide-react";
-import { CATEGORIAS_IA, type Departamento } from "@/types";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import type { Product } from "@/types";
+import { CATEGORIAS_IA, type Departamento } from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
 
 export type MegaMenuAlign = "left" | "center" | "right";
@@ -15,13 +15,15 @@ const ALIGN_CLASSES: Record<MegaMenuAlign, string> = {
 
 export function DepartmentMegaMenu({
   departamento,
+  products,
   align = "center",
 }: {
   departamento: Departamento;
+  products: Product[];
   align?: MegaMenuAlign;
 }) {
   const categorias = CATEGORIAS_IA[departamento];
-  const departamentoHref = `/?categoria=${encodeURIComponent(departamento)}`;
+  const departamentoHref = `/?departamento=${encodeURIComponent(departamento)}`;
 
   return (
     <div
@@ -32,11 +34,13 @@ export function DepartmentMegaMenu({
     >
       <div className="animate-[scale-in_0.15s_ease-out] flex gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
         {categorias.map((categoria) => {
-          const productos = MOCK_PRODUCTS.filter(
-            (p) =>
-              p.departamento === departamento && p.categoria_ia === categoria,
-          ).slice(0, 2);
-          const categoriaHref = `${departamentoHref}&subcategoria=${encodeURIComponent(categoria)}`;
+          const productos = products
+            .filter(
+              (p) =>
+                p.departamento === departamento && p.categoria_ia === categoria,
+            )
+            .slice(0, 2);
+          const categoriaHref = `${departamentoHref}&categoria=${encodeURIComponent(categoria)}`;
 
           return (
             <div key={categoria} className="w-40 shrink-0">

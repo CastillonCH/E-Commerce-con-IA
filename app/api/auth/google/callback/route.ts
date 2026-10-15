@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import {
-  SESSION_COOKIE,
-  encodeSession,
-  sessionCookieOptions,
-} from "@/lib/auth";
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { CSRF_COOKIE } from "@/app/api/auth/google/route";
+import { safeRedirect } from "@/lib/safe-redirect";
+import { upsertGoogleUser } from "@/lib/data/users-repo";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
@@ -15,7 +13,9 @@ interface GoogleTokenResponse {
 }
 
 interface GoogleProfile {
+  sub: string;
   email: string;
+  email_verified: boolean;
   name: string;
 }
 
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   let csrf = "";
   try {
     const decoded = JSON.parse(Buffer.from(state, "base64url").toString());
-    from = typeof decoded.from === "string" ? decoded.from : "/";
+    from = safeRedirect(typeof decoded.from === "string" ? decoded.from : "/");
     csrf = typeof decoded.csrf === "string" ? decoded.csrf : "";
   } catch {
     return redirectWithError(url.origin);
@@ -71,17 +71,23 @@ export async function GET(request: Request) {
   if (!profileResponse.ok) return redirectWithError(url.origin);
   const profile = (await profileResponse.json()) as GoogleProfile;
 
+  if (!profile.email_verified) return redirectWithError(url.origin);
+
+  const user = await upsertGoogleUser({
+    sub: profile.sub,
+    email: profile.email,
+    name: profile.name,
+  });
+
+  const token = await createSessionToken({
+    role: user.role,
+    name: user.nombre,
+    email: user.email,
+    provider: "google",
+  });
+
   const response = NextResponse.redirect(new URL(from, url.origin));
-  response.cookies.set(
-    SESSION_COOKIE,
-    encodeSession({
-      role: "CLIENT",
-      name: profile.name,
-      email: profile.email,
-      provider: "google",
-    }),
-    sessionCookieOptions(),
-  );
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   response.cookies.delete(CSRF_COOKIE);
   return response;
 }

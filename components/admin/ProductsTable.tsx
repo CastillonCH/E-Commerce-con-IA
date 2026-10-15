@@ -7,18 +7,17 @@ import { Pencil, Trash2, Loader2 } from "lucide-react";
 import type { Product } from "@/types";
 import { deleteProduct, getApiErrorMessage } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function ProductsTable({ products }: { products: Product[] }) {
   const [items, setItems] = useState(products);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
 
-  async function handleDelete(product: Product) {
-    if (
-      !confirm(
-        `¿Eliminar "${product.nombre}"? Esta acción no se puede deshacer.`,
-      )
-    )
-      return;
+  async function confirmDelete() {
+    const product = pendingDelete;
+    if (!product) return;
+    setPendingDelete(null);
 
     setDeletingId(product.id);
     try {
@@ -35,15 +34,16 @@ export function ProductsTable({ products }: { products: Product[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[720px] text-left text-sm">
+        <caption className="sr-only">Lista de productos publicados</caption>
         <thead>
           <tr className="border-b border-slate-200 text-slate-500">
-            <th className="px-4 py-3 font-medium">Producto</th>
-            <th className="px-4 py-3 font-medium">Marca</th>
-            <th className="px-4 py-3 font-medium">Departamento</th>
-            <th className="px-4 py-3 font-medium">Categoría IA</th>
-            <th className="px-4 py-3 font-medium">Precio</th>
-            <th className="px-4 py-3 font-medium">Stock</th>
-            <th className="px-4 py-3 font-medium text-right">Acciones</th>
+            <th scope="col" className="px-4 py-3 font-medium">Producto</th>
+            <th scope="col" className="px-4 py-3 font-medium">Marca</th>
+            <th scope="col" className="px-4 py-3 font-medium">Departamento</th>
+            <th scope="col" className="px-4 py-3 font-medium">Categoría IA</th>
+            <th scope="col" className="px-4 py-3 font-medium">Precio</th>
+            <th scope="col" className="px-4 py-3 font-medium">Stock</th>
+            <th scope="col" className="px-4 py-3 font-medium text-right">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -73,7 +73,7 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => handleDelete(product)}
+                    onClick={() => setPendingDelete(product)}
                     disabled={deletingId === product.id}
                     aria-label="Eliminar producto"
                     className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
@@ -90,6 +90,19 @@ export function ProductsTable({ products }: { products: Product[] }) {
           ))}
         </tbody>
       </table>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Eliminar producto"
+        description={
+          pendingDelete
+            ? `¿Eliminar "${pendingDelete.nombre}"? Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

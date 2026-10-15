@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { PackagePlus } from "lucide-react";
-import { MOCK_PRODUCTS } from "@/lib/mock-products";
+import { getSession } from "@/lib/auth";
+import { listProducts, listByMarca } from "@/lib/data/products-repo";
 import { ProductsTable } from "@/components/admin/ProductsTable";
 
-export default function AdminProductsPage() {
+export default async function AdminProductsPage() {
+  const session = await getSession();
+  // Un vendedor solo ve y gestiona los productos de su propia marca; un
+  // administrador ve el catálogo completo.
+  const products =
+    session?.role === "SELLER"
+      ? await listByMarca(session.name)
+      : await listProducts();
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -17,7 +26,7 @@ export default function AdminProductsPage() {
         </Link>
       </div>
 
-      <ProductsTable products={MOCK_PRODUCTS} />
+      <ProductsTable products={products} />
     </div>
   );
 }

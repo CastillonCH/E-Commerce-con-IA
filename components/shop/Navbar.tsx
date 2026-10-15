@@ -21,7 +21,8 @@ import {
   ShoppingBasket,
   type LucideIcon,
 } from "lucide-react";
-import { DEPARTAMENTOS, type Departamento } from "@/types";
+import type { Product } from "@/types";
+import { DEPARTAMENTOS, type Departamento } from "@/lib/taxonomy";
 import type { Session } from "@/lib/auth";
 import { useCartStore } from "@/store/cart-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
@@ -40,9 +41,10 @@ const DEPARTMENT_ICONS: Record<Departamento, LucideIcon> = {
 
 interface NavbarProps {
   session: Session | null;
+  products: Product[];
 }
 
-export function Navbar({ session }: NavbarProps) {
+export function Navbar({ session, products }: NavbarProps) {
   const totalItems = useCartStore((state) => state.totalItems());
   const mounted = useHasMounted();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -98,10 +100,21 @@ export function Navbar({ session }: NavbarProps) {
                 className="relative"
                 onMouseEnter={() => openDeptMenu(departamento)}
                 onMouseLeave={scheduleCloseDeptMenu}
+                onFocus={() => openDeptMenu(departamento)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setOpenDept(null);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setOpenDept(null);
+                }}
               >
                 <Link
-                  href={`/?categoria=${departamento}`}
+                  href={`/?departamento=${departamento}`}
                   onClick={() => setOpenDept(null)}
+                  aria-haspopup="true"
+                  aria-expanded={isOpen}
                   className="relative flex items-center px-3 py-2 text-sm font-medium text-slate-800"
                 >
                   {departamento}
@@ -113,7 +126,11 @@ export function Navbar({ session }: NavbarProps) {
                   />
                 </Link>
                 {isOpen && (
-                  <DepartmentMegaMenu departamento={departamento} align={align} />
+                  <DepartmentMegaMenu
+                    departamento={departamento}
+                    products={products}
+                    align={align}
+                  />
                 )}
               </div>
             );
@@ -136,11 +153,22 @@ export function Navbar({ session }: NavbarProps) {
         </form>
 
         <div className="flex shrink-0 items-center gap-1">
-          <div className="relative">
+          <div
+            className="relative"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setAccountOpen(false);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAccountOpen(false);
+            }}
+          >
             <button
               type="button"
               onClick={() => setAccountOpen((v) => !v)}
-              onBlur={() => setTimeout(() => setAccountOpen(false), 150)}
+              aria-haspopup="true"
+              aria-expanded={accountOpen}
               className="flex items-center gap-1.5 rounded-full p-2 text-slate-700 hover:bg-slate-100"
               aria-label="Cuenta"
             >
@@ -251,7 +279,7 @@ export function Navbar({ session }: NavbarProps) {
               return (
                 <Link
                   key={departamento}
-                  href={`/?categoria=${departamento}`}
+                  href={`/?departamento=${departamento}`}
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
