@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const CSRF_COOKIE = "google_oauth_csrf";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const from = url.searchParams.get("from") ?? "/";
+  const from = safeRedirect(url.searchParams.get("from"));
   const clientId = process.env.GOOGLE_CLIENT_ID;
 
   if (!clientId) {

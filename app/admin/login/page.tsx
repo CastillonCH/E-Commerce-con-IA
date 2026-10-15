@@ -5,15 +5,15 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select } from "@/components/ui/Input";
+import { Input, Label } from "@/components/ui/Input";
 import { APP_CONFIG } from "@/lib/config";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { cn } from "@/lib/utils";
 
 function StaffLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/admin/dashboard";
-  const [role, setRole] = useState<"SELLER" | "ADMIN">("SELLER");
+  const from = safeRedirect(searchParams.get("from"), "/admin/dashboard");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -27,17 +27,19 @@ function StaffLoginForm() {
     const response = await fetch("/api/auth/staff-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({ email, password }),
     });
 
     setIsLoading(false);
 
     if (!response.ok) {
-      setError("No se pudo iniciar sesión.");
+      const data = await response.json().catch(() => null);
+      setError(data?.detail ?? "No se pudo iniciar sesión.");
       return;
     }
 
-    router.push(role === "ADMIN" ? from : "/admin/productos");
+    const data = (await response.json()) as { role: "ADMIN" | "SELLER" };
+    router.push(data.role === "ADMIN" ? from : "/admin/productos");
     router.refresh();
   }
 
@@ -66,19 +68,6 @@ function StaffLoginForm() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <Label htmlFor="role">Tipo de cuenta</Label>
-            <Select
-              id="role"
-              value={role}
-              onChange={(event) =>
-                setRole(event.target.value as "SELLER" | "ADMIN")
-              }
-            >
-              <option value="SELLER">Vendedor / Encargado de inventario</option>
-              <option value="ADMIN">Administrador global</option>
-            </Select>
-          </div>
-          <div>
             <Label htmlFor="email">Email corporativo</Label>
             <Input
               id="email"
@@ -101,7 +90,11 @@ function StaffLoginForm() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
 
           <Button
             type="submit"

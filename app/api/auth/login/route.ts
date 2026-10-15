@@ -1,30 +1,36 @@
 import { NextResponse } from "next/server";
-import {
-  SESSION_COOKIE,
-  encodeSession,
-  sessionCookieOptions,
-} from "@/lib/auth";
+import { z } from "zod";
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import { findUserByEmail, verifyPassword } from "@/lib/data/users-repo";
+
+const loginSchema = z.object({
+  email: z.string().trim().email(),
+  password: z.string().min(1),
+});
 
 export async function POST(request: Request) {
-  const { email, password } = await request.json();
-
-  if (!email || !password) {
-    return NextResponse.json(
-      { detail: "Email y contraseña son obligatorios" },
-      { status: 400 },
-    );
+  const body = await request.json().catch(() => null);
+  const parsed = loginSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ detail: "Datos inválidos" }, { status: 400 });
   }
 
-  const response = NextResponse.json({ success: true });
-  response.cookies.set(
-    SESSION_COOKIE,
-    encodeSession({
-      role: "CLIENT",
-      name: email.split("@")[0],
-      email,
-      provider: "credentials",
-    }),
-    sessionCookieOptions(),
+  const user = await findUserByEmail(parsed.data.email);
+  const genericError = NextResponse.json(
+    { detail: "Email o contraseña incorrectos" },
+    { status: 401 },
   );
+  if (!user) return genericError;
+  if (!(await verifyPassword(user, parsed.data.password))) return genericError;
+
+  const token = await createSessionToken({
+    role: user.role,
+    name: user.nombre,
+    email: user.email,
+    provider: "credentials",
+  });
+
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   return response;
 }

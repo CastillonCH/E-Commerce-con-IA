@@ -7,6 +7,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { GoogleIcon } from "@/components/shop/GoogleIcon";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { cn } from "@/lib/utils";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -19,7 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/";
+  const from = safeRedirect(searchParams.get("from"));
   const errorCode = searchParams.get("error");
   const [tab, setTab] = useState<"login" | "register">(
     searchParams.get("tab") === "register" ? "register" : "login",
