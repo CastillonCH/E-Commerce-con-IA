@@ -135,10 +135,10 @@ export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
           </div>
         </div>
 
-        <div>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+        <fieldset className="m-0 border-0 p-0">
+          <legend className="mb-4 w-full p-0 text-lg font-semibold text-slate-900">
             Método de pago
-          </h2>
+          </legend>
           <div className="flex flex-col gap-2.5">
             {PAYMENT_OPTIONS.map(({ value, label, icon: Icon }) => (
               <label
@@ -163,7 +163,7 @@ export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <div className="h-fit rounded-2xl border border-slate-200 bg-white p-5">
