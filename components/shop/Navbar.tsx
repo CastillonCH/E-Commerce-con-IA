@@ -100,10 +100,21 @@ export function Navbar({ session, products }: NavbarProps) {
                 className="relative"
                 onMouseEnter={() => openDeptMenu(departamento)}
                 onMouseLeave={scheduleCloseDeptMenu}
+                onFocus={() => openDeptMenu(departamento)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setOpenDept(null);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setOpenDept(null);
+                }}
               >
                 <Link
                   href={`/?departamento=${departamento}`}
                   onClick={() => setOpenDept(null)}
+                  aria-haspopup="true"
+                  aria-expanded={isOpen}
                   className="relative flex items-center px-3 py-2 text-sm font-medium text-slate-800"
                 >
                   {departamento}
@@ -142,11 +153,22 @@ export function Navbar({ session, products }: NavbarProps) {
         </form>
 
         <div className="flex shrink-0 items-center gap-1">
-          <div className="relative">
+          <div
+            className="relative"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setAccountOpen(false);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAccountOpen(false);
+            }}
+          >
             <button
               type="button"
               onClick={() => setAccountOpen((v) => !v)}
-              onBlur={() => setTimeout(() => setAccountOpen(false), 150)}
+              aria-haspopup="true"
+              aria-expanded={accountOpen}
               className="flex items-center gap-1.5 rounded-full p-2 text-slate-700 hover:bg-slate-100"
               aria-label="Cuenta"
             >

@@ -27,12 +27,13 @@ export default async function AdminClientsPage() {
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[640px] text-left text-sm">
+          <caption className="sr-only">Lista de clientes registrados</caption>
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
-              <th className="px-4 py-3 font-medium">Cliente</th>
-              <th className="px-4 py-3 font-medium">Registrado</th>
-              <th className="px-4 py-3 font-medium">Pedidos</th>
-              <th className="px-4 py-3 font-medium">Total gastado</th>
+              <th scope="col" className="px-4 py-3 font-medium">Cliente</th>
+              <th scope="col" className="px-4 py-3 font-medium">Registrado</th>
+              <th scope="col" className="px-4 py-3 font-medium">Pedidos</th>
+              <th scope="col" className="px-4 py-3 font-medium">Total gastado</th>
             </tr>
           </thead>
           <tbody>

@@ -121,11 +121,12 @@ export default function VendorsPage() {
         </h2>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-left text-sm">
+            <caption className="sr-only">Lista de vendedores activos</caption>
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
-                <th className="px-4 py-3 font-medium">Vendedor</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Productos</th>
+                <th scope="col" className="px-4 py-3 font-medium">Vendedor</th>
+                <th scope="col" className="px-4 py-3 font-medium">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium">Productos</th>
               </tr>
             </thead>
             <tbody>

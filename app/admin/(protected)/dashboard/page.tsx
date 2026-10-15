@@ -125,12 +125,15 @@ export default async function AdminDashboardPage() {
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[480px] text-left text-sm">
+            <caption className="sr-only">
+              Últimos productos clasificados por IA
+            </caption>
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-2 pr-4 font-medium">Producto</th>
-                <th className="py-2 pr-4 font-medium">Departamento</th>
-                <th className="py-2 pr-4 font-medium">Categoría IA</th>
-                <th className="py-2 font-medium">Stock</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Producto</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Departamento</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Categoría IA</th>
+                <th scope="col" className="py-2 font-medium">Stock</th>
               </tr>
             </thead>
             <tbody>

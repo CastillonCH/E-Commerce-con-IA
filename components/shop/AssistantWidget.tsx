@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
@@ -76,6 +76,20 @@ export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [activeTopic, setActiveTopic] = useState<SupportTopic | null>(null);
   const [showTeaser, setShowTeaser] = useState(false);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      closeButtonRef.current?.focus();
+    }
+  }, [open]);
+
+  function closeAndReturnFocus() {
+    setOpen(false);
+    toggleButtonRef.current?.focus();
+  }
 
   useEffect(() => {
     if (open) return;
@@ -139,7 +153,16 @@ export function AssistantWidget() {
       )}
 
       {open && (
-        <div className="flex h-[28rem] w-[22rem] max-w-[calc(100vw-2.5rem)] origin-bottom-right animate-[pop-in_0.25s_ease-out] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="false"
+          aria-label={`Centro de ayuda ${APP_CONFIG.storeName}`}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeAndReturnFocus();
+          }}
+          className="flex h-[28rem] w-[22rem] max-w-[calc(100vw-2.5rem)] origin-bottom-right animate-[pop-in_0.25s_ease-out] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        >
           <div className="flex items-center justify-between bg-brand px-4 py-3">
             <div className="flex items-center gap-2 text-white">
               <div className="rounded-full bg-white/15 p-1.5">
@@ -156,7 +179,8 @@ export function AssistantWidget() {
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              ref={closeButtonRef}
+              onClick={closeAndReturnFocus}
               aria-label="Cerrar asistente"
               className="rounded-full p-1 text-white/80 hover:bg-white/10 hover:text-white"
             >
@@ -177,10 +201,13 @@ export function AssistantWidget() {
 
       <button
         type="button"
+        ref={toggleButtonRef}
         onClick={() => {
           setOpen((v) => !v);
           setShowTeaser(false);
         }}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         aria-label={
           open ? "Cerrar asistente virtual" : "Abrir asistente virtual"
         }

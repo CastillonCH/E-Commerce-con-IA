@@ -49,13 +49,14 @@ export function AdminOrdersTable({ orders }: { orders: Order[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[720px] text-left text-sm">
+        <caption className="sr-only">Lista de pedidos de clientes</caption>
         <thead>
           <tr className="border-b border-slate-200 text-slate-500">
-            <th className="px-4 py-3 font-medium">Pedido</th>
-            <th className="px-4 py-3 font-medium">Cliente</th>
-            <th className="px-4 py-3 font-medium">Fecha</th>
-            <th className="px-4 py-3 font-medium">Total</th>
-            <th className="px-4 py-3 font-medium">Estado</th>
+            <th scope="col" className="px-4 py-3 font-medium">Pedido</th>
+            <th scope="col" className="px-4 py-3 font-medium">Cliente</th>
+            <th scope="col" className="px-4 py-3 font-medium">Fecha</th>
+            <th scope="col" className="px-4 py-3 font-medium">Total</th>
+            <th scope="col" className="px-4 py-3 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>

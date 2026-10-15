@@ -14,7 +14,9 @@ export default async function ShopLayout({
   return (
     <div className="flex flex-1 flex-col">
       <Navbar session={session} products={products} />
-      <main className="flex flex-1 flex-col">{children}</main>
+      <main id="main-content" className="flex flex-1 flex-col">
+        {children}
+      </main>
       <Footer />
       <AssistantWidget />
     </div>

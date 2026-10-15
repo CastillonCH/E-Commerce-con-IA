@@ -34,15 +34,16 @@ export function ProductsTable({ products }: { products: Product[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[720px] text-left text-sm">
+        <caption className="sr-only">Lista de productos publicados</caption>
         <thead>
           <tr className="border-b border-slate-200 text-slate-500">
-            <th className="px-4 py-3 font-medium">Producto</th>
-            <th className="px-4 py-3 font-medium">Marca</th>
-            <th className="px-4 py-3 font-medium">Departamento</th>
-            <th className="px-4 py-3 font-medium">Categoría IA</th>
-            <th className="px-4 py-3 font-medium">Precio</th>
-            <th className="px-4 py-3 font-medium">Stock</th>
-            <th className="px-4 py-3 font-medium text-right">Acciones</th>
+            <th scope="col" className="px-4 py-3 font-medium">Producto</th>
+            <th scope="col" className="px-4 py-3 font-medium">Marca</th>
+            <th scope="col" className="px-4 py-3 font-medium">Departamento</th>
+            <th scope="col" className="px-4 py-3 font-medium">Categoría IA</th>
+            <th scope="col" className="px-4 py-3 font-medium">Precio</th>
+            <th scope="col" className="px-4 py-3 font-medium">Stock</th>
+            <th scope="col" className="px-4 py-3 font-medium text-right">Acciones</th>
           </tr>
         </thead>
         <tbody>
