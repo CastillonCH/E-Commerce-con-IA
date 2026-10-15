@@ -8,7 +8,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { DEPARTAMENTOS } from "@/lib/taxonomy";
-import { createProduct, getApiErrorMessage } from "@/lib/api";
+import { createProductAction } from "@/app/admin/(protected)/productos/actions";
 import { Button } from "@/components/ui/Button";
 import { FieldError, Input, Label, Select } from "@/components/ui/Input";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
@@ -50,17 +50,26 @@ export default function AdminNewProductPage() {
 
   async function onSubmit(values: ProductFormValues) {
     setIsAnalyzing(true);
-    try {
-      const { ai } = await createProduct(values);
-      toast.success(
-        `Producto guardado exitosamente. La IA lo ha clasificado automáticamente como: ${ai.predicted_category}`,
-      );
-      router.push("/admin/dashboard");
-    } catch (error) {
-      toast.error(getApiErrorMessage(error));
-    } finally {
-      setIsAnalyzing(false);
+    const result = await createProductAction(values);
+    setIsAnalyzing(false);
+
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo guardar el producto.");
+      return;
     }
+
+    if (result.pendingReview) {
+      toast(
+        `La IA clasificó este producto como "${result.predictedCategory}" con baja confianza (${Math.round((result.accuracy ?? 0) * 100)}%). Quedó en revisión antes de publicarse.`,
+      );
+      router.push("/admin/revision");
+      return;
+    }
+
+    toast.success(
+      `Producto guardado exitosamente. La IA lo ha clasificado automáticamente como: ${result.predictedCategory}`,
+    );
+    router.push("/admin/dashboard");
   }
 
   return (

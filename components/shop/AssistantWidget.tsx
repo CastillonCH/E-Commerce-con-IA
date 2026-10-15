@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Bot,
   MessageCircle,
-  Sparkles,
   X,
   ChevronLeft,
   ChevronRight,
@@ -148,10 +147,10 @@ export function AssistantWidget() {
               </div>
               <div>
                 <p className="text-sm font-semibold leading-none">
-                  Asistente {APP_CONFIG.storeName}
+                  Centro de ayuda {APP_CONFIG.storeName}
                 </p>
-                <p className="mt-1 flex items-center gap-1 text-[11px] text-white/80">
-                  <Sparkles className="h-3 w-3" /> Impulsado por IA
+                <p className="mt-1 text-[11px] text-white/80">
+                  Respuestas rápidas y contacto con un asesor
                 </p>
               </div>
             </div>

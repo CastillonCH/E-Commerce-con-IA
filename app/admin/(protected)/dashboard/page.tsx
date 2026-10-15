@@ -1,16 +1,31 @@
 import Link from "next/link";
-import { Package, PackagePlus, TrendingUp, Users, Store } from "lucide-react";
-import { listProducts } from "@/lib/data/products-repo";
+import {
+  Package,
+  PackagePlus,
+  TrendingUp,
+  Users,
+  Store,
+  Sparkles,
+  Copy,
+} from "lucide-react";
+import {
+  listProducts,
+  listPendingReview,
+  listPossibleDuplicates,
+} from "@/lib/data/products-repo";
 import { listOrders } from "@/lib/data/orders-repo";
 import { listSellers } from "@/lib/data/users-repo";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function AdminDashboardPage() {
-  const [products, orders, sellers] = await Promise.all([
-    listProducts(),
-    listOrders(),
-    listSellers(),
-  ]);
+  const [products, orders, sellers, pendingReview, duplicates] =
+    await Promise.all([
+      listProducts(),
+      listOrders(),
+      listSellers(),
+      listPendingReview(),
+      listPossibleDuplicates(),
+    ]);
 
   const stats = [
     { label: "Productos activos", value: products.length, icon: Package },
@@ -64,6 +79,44 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link
+          href="/admin/revision"
+          className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          <div className="rounded-lg bg-amber-50 p-3">
+            <Sparkles className="h-5 w-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">
+              {pendingReview.length}
+            </p>
+            <p className="text-sm text-slate-500">
+              Producto{pendingReview.length === 1 ? "" : "s"} pendiente
+              {pendingReview.length === 1 ? "" : "s"} de revisión de IA
+            </p>
+          </div>
+        </Link>
+        <Link
+          href="/admin/duplicados"
+          className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          <div className="rounded-lg bg-blue-50 p-3">
+            <Copy className="h-5 w-5 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">
+              {duplicates.length}
+            </p>
+            <p className="text-sm text-slate-500">
+              Posible{duplicates.length === 1 ? "" : "s"} duplicado
+              {duplicates.length === 1 ? "" : "s"} detectado
+              {duplicates.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        </Link>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
