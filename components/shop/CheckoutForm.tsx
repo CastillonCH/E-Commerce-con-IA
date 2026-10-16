@@ -50,9 +50,6 @@ export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
       metodoPago,
       items: items.map((item) => ({
         productId: item.product.id,
-        nombre: item.product.nombre,
-        imagen_url: item.product.imagen_url,
-        precio: item.product.precio,
         cantidad: item.cantidad,
       })),
     });

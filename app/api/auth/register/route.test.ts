@@ -9,7 +9,9 @@ function postRequest(body: unknown) {
   });
 }
 
-describe("POST /api/auth/register", () => {
+// Pruebas de integración: createClient ya escribe en PostgreSQL real
+// (ver tests/db-global-setup.ts). Se saltan sin DATABASE_URL.
+describe.skipIf(!process.env.DATABASE_URL)("POST /api/auth/register", () => {
   it("crea una cuenta nueva y abre sesión", async () => {
     const response = await POST(
       postRequest({

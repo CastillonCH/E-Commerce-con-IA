@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2 } from "lucide-react";
 import type { DuplicatePair } from "@/lib/data/products-repo";
 import type { Product } from "@/types";
-import { deleteProduct, getApiErrorMessage } from "@/lib/api";
+import { deleteProductAction } from "@/app/admin/(protected)/productos/actions";
 import { formatCurrency } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -50,16 +50,16 @@ export function DuplicatesList({ pairs }: { pairs: DuplicatePair[] }) {
     setPendingDelete(null);
 
     setDeletingId(product.id);
-    try {
-      await deleteProduct(product.id);
-      setRemoved((prev) => new Set(prev).add(product.id));
-      toast.success(`${product.nombre} eliminado`);
-      router.refresh();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error));
-    } finally {
-      setDeletingId(null);
+    const result = await deleteProductAction(product.id);
+    setDeletingId(null);
+
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo eliminar el producto.");
+      return;
     }
+    setRemoved((prev) => new Set(prev).add(product.id));
+    toast.success(`${product.nombre} eliminado`);
+    router.refresh();
   }
 
   if (visiblePairs.length === 0) {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Pencil, Trash2, Loader2 } from "lucide-react";
 import type { Product } from "@/types";
-import { deleteProduct, getApiErrorMessage } from "@/lib/api";
+import { deleteProductAction } from "@/app/admin/(protected)/productos/actions";
 import { formatCurrency } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -20,15 +20,15 @@ export function ProductsTable({ products }: { products: Product[] }) {
     setPendingDelete(null);
 
     setDeletingId(product.id);
-    try {
-      await deleteProduct(product.id);
-      setItems((prev) => prev.filter((p) => p.id !== product.id));
-      toast.success("Producto eliminado");
-    } catch (error) {
-      toast.error(getApiErrorMessage(error));
-    } finally {
-      setDeletingId(null);
+    const result = await deleteProductAction(product.id);
+    setDeletingId(null);
+
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo eliminar el producto.");
+      return;
     }
+    setItems((prev) => prev.filter((p) => p.id !== product.id));
+    toast.success("Producto eliminado");
   }
 
   return (

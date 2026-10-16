@@ -1,12 +1,11 @@
 import axios, { AxiosError } from "axios";
 import { APP_CONFIG } from "@/lib/config";
-import type {
-  ApiErrorResponse,
-  CreateProductResponse,
-  NewProductInput,
-  Product,
-} from "@/types";
+import type { ApiErrorResponse, CreateProductResponse, NewProductInput } from "@/types";
 
+// Único punto que todavía habla con un servicio externo: subir la imagen de
+// un producto nuevo y clasificarla con IA. El resto de la app (catálogo,
+// pedidos, usuarios, editar/eliminar un producto) ya vive en PostgreSQL vía
+// lib/db.ts y lib/data/*-repo.ts.
 export const api = axios.create({
   baseURL: APP_CONFIG.apiUrl,
   timeout: 15000,
@@ -21,11 +20,6 @@ export function getApiErrorMessage(error: unknown): string {
     );
   }
   return "Ocurrió un error inesperado.";
-}
-
-export async function fetchProducts(): Promise<Product[]> {
-  const { data } = await api.get<Product[]>("/api/productos");
-  return data;
 }
 
 export async function createProduct(
@@ -45,35 +39,4 @@ export async function createProduct(
     { headers: { "Content-Type": "multipart/form-data" } },
   );
   return data;
-}
-
-export interface UpdateProductInput {
-  nombre: string;
-  precio: number;
-  stock: number;
-  marca: string;
-  departamento: NewProductInput["departamento"];
-  imagen?: File;
-}
-
-export async function updateProduct(
-  id: string,
-  input: UpdateProductInput,
-): Promise<Product> {
-  const formData = new FormData();
-  formData.append("nombre", input.nombre);
-  formData.append("precio", String(input.precio));
-  formData.append("stock", String(input.stock));
-  formData.append("marca", input.marca);
-  formData.append("departamento", input.departamento);
-  if (input.imagen) formData.append("imagen", input.imagen);
-
-  const { data } = await api.put<Product>(`/api/productos/${id}`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  return data;
-}
-
-export async function deleteProduct(id: string): Promise<void> {
-  await api.delete(`/api/productos/${id}`);
 }

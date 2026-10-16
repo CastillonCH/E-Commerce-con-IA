@@ -23,18 +23,24 @@ export async function approveReviewAction(
   productId: string,
   categoriaFinal?: string,
 ): Promise<ReviewActionResult> {
-  if (!(await requireAdmin())) return { success: false, error: "No autorizado." };
+  const admin = await requireAdmin();
+  if (!admin) return { success: false, error: "No autorizado." };
 
   const parsed = schema.safeParse({ productId, categoriaFinal });
   if (!parsed.success) return { success: false, error: "Datos inválidos." };
 
-  const product = await approvePendingReview(
-    parsed.data.productId,
-    parsed.data.categoriaFinal,
-  );
-  if (!product) return { success: false, error: "El producto ya no está en revisión." };
-
-  return { success: true };
+  try {
+    const product = await approvePendingReview(
+      parsed.data.productId,
+      admin.email,
+      parsed.data.categoriaFinal,
+    );
+    if (!product) return { success: false, error: "El producto ya no está en revisión." };
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo aprobar el producto.";
+    return { success: false, error: message };
+  }
 }
 
 export async function rejectReviewAction(

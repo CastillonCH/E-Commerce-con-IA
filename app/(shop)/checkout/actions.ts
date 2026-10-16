@@ -12,13 +12,13 @@ const placeOrderSchema = z.object({
     telefono: z.string().trim().min(1),
   }),
   metodoPago: z.enum(["tarjeta", "yape_plin", "contraentrega"]),
+  // Solo productId + cantidad: el precio y el nombre los toma la base de
+  // datos directo de `productos`, nunca de lo que mande el cliente (ver
+  // lib/data/orders-repo.ts).
   items: z
     .array(
       z.object({
         productId: z.string().min(1),
-        nombre: z.string().min(1),
-        imagen_url: z.string().min(1),
-        precio: z.number().positive(),
         cantidad: z.number().int().positive(),
       }),
     )
@@ -43,19 +43,18 @@ export async function placeOrder(input: unknown): Promise<PlaceOrderResult> {
   }
 
   const { direccion, metodoPago, items } = parsed.data;
-  const total = items.reduce(
-    (sum, item) => sum + item.precio * item.cantidad,
-    0,
-  );
 
-  const order = await createOrder({
-    clienteNombre: direccion.nombre,
-    clienteEmail: session.email,
-    direccion,
-    metodoPago,
-    items,
-    total,
-  });
-
-  return { success: true, orderId: order.id };
+  try {
+    const order = await createOrder({
+      clienteEmail: session.email,
+      direccion,
+      metodoPago,
+      items,
+    });
+    return { success: true, orderId: order.id };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo crear el pedido.";
+    return { success: false, error: message };
+  }
 }

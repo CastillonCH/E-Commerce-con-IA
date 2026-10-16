@@ -3,17 +3,16 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { Product } from "@/types";
 import { DEPARTAMENTOS } from "@/lib/taxonomy";
-import { updateProduct, getApiErrorMessage } from "@/lib/api";
+import { updateProductAction } from "@/app/admin/(protected)/productos/actions";
 import { Button } from "@/components/ui/Button";
 import { FieldError, Input, Label, Select } from "@/components/ui/Input";
-import { ImageDropzone } from "@/components/admin/ImageDropzone";
 
 const editSchema = z.object({
   nombre: z.string().trim().min(2, "El nombre es muy corto"),
@@ -23,7 +22,6 @@ const editSchema = z.object({
   departamento: z.enum(DEPARTAMENTOS, {
     message: "Selecciona un departamento",
   }),
-  imagen: z.instanceof(File).optional(),
 });
 
 type EditFormInput = z.input<typeof editSchema>;
@@ -35,7 +33,6 @@ export function EditProductForm({ product }: { product: Product }) {
 
   const {
     register,
-    control,
     handleSubmit,
     formState: { errors },
   } = useForm<EditFormInput, unknown, EditFormValues>({
@@ -51,15 +48,16 @@ export function EditProductForm({ product }: { product: Product }) {
 
   async function onSubmit(values: EditFormValues) {
     setIsSaving(true);
-    try {
-      await updateProduct(product.id, values);
-      toast.success("Producto actualizado");
-      router.push("/admin/productos");
-    } catch (error) {
-      toast.error(getApiErrorMessage(error));
-    } finally {
-      setIsSaving(false);
+    const result = await updateProductAction({ productId: product.id, ...values });
+    setIsSaving(false);
+
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo actualizar el producto.");
+      return;
     }
+
+    toast.success("Producto actualizado");
+    router.push("/admin/productos");
   }
 
   return (
@@ -117,8 +115,10 @@ export function EditProductForm({ product }: { product: Product }) {
         </div>
 
         <div>
-          <Label htmlFor="imagen">Foto del producto</Label>
-          <div className="mb-3 flex items-center gap-3">
+          <p className="mb-1.5 block text-sm font-medium text-slate-700">
+            Foto del producto
+          </p>
+          <div className="flex items-center gap-3">
             <div className="relative h-16 w-16 overflow-hidden rounded-lg bg-slate-100">
               <Image
                 src={product.imagen_url}
@@ -129,19 +129,10 @@ export function EditProductForm({ product }: { product: Product }) {
               />
             </div>
             <p className="text-xs text-slate-500">
-              Imagen actual. Sube una nueva solo si quieres reemplazarla.
+              Cambiar la foto vuelve a disparar la clasificación por IA; por
+              ahora solo se hace al crear un producto nuevo.
             </p>
           </div>
-          <Controller
-            name="imagen"
-            control={control}
-            render={({ field }) => (
-              <ImageDropzone
-                onFileSelected={(file) => field.onChange(file ?? undefined)}
-                error={errors.imagen?.message}
-              />
-            )}
-          />
         </div>
 
         <div className="mt-2 flex gap-3">

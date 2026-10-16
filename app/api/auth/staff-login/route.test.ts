@@ -11,7 +11,9 @@ function postRequest(body: unknown) {
   });
 }
 
-describe("POST /api/auth/staff-login", () => {
+// Pruebas de integración: findUserByEmail ya consulta PostgreSQL real
+// (ver tests/db-global-setup.ts). Se saltan sin DATABASE_URL.
+describe.skipIf(!process.env.DATABASE_URL)("POST /api/auth/staff-login", () => {
   it("permite el login de un ADMIN con credenciales correctas", async () => {
     const response = await POST(
       postRequest({ email: "admin@novastore.pe", password: DEMO_PASSWORD }),
