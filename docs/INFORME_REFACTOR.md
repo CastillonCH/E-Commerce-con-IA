@@ -64,17 +64,23 @@ Cambios principales:
 - `npm run lint`, `npx tsc --noEmit` y `npm run build` limpios, con y sin
   `DATABASE_URL` definida (para no romper builds sin base disponible).
 
+## Fase 8: `/admin/vendedores` conectado a la base
+
+Era el único punto pendiente que no dependía del servicio externo de IA.
+`lib/data/users-repo.ts` suma `listPendingVendedores`/`listActiveVendedores`
+(sobre `v_admin_vendedores`) y `approveVendedorApplication`/
+`rejectVendedorApplication` (`UPDATE vendedores ... RETURNING`, el trigger
+`fn_vendedor_sync_rol` de la base se encarga de pasar el rol del usuario a
+`SELLER` o de vuelta a `CLIENT`). Verificado end-to-end contra Postgres
+real: aprobar/rechazar una solicitud semilla, confirmando en la base que
+el rol, `motivo_rechazo` y `revisado_por` quedaron correctos, y que la UI
+refleja el cambio sin recargar manualmente.
+
 ## Pendientes conocidos (no resueltos en este refactor)
 
 1. **Clasificación de imágenes por IA** (`NEXT_PUBLIC_API_URL`): servicio
    externo que no existe en ningún repo accesible. Dar de alta un
    producto nuevo falla con un error de red controlado hasta que se
-   despliegue. No se puede resolver desde el frontend.
+   despliegue. No se puede resolver desde el frontend sin ese servicio.
 2. **Editar producto no permite reemplazar la foto** — consecuencia
    directa de (1): cambiar la imagen dispararía una nueva clasificación.
-3. **`/admin/vendedores`** (aprobar/rechazar solicitudes de vendedor)
-   sigue siendo una vista estática, no conectada a la tabla `vendedores`.
-
-El punto 3 es pura capa de datos (no depende del servicio de IA) y es el
-candidato más directo para una próxima fase si se quiere seguir cerrando
-brechas.
