@@ -18,6 +18,12 @@ export default defineConfig({
     // con la pragma `// @vitest-environment jsdom` al inicio del archivo.
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
+    globalSetup: ["./tests/db-global-setup.ts"],
+    // Los tests de lib/data/*.test.ts comparten una sola base de datos real
+    // (ver tests/db-global-setup.ts): correr archivos de test en paralelo
+    // los haría competir por las mismas filas y producir resultados
+    // inestables, así que se corren secuencialmente.
+    fileParallelism: false,
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules", "tests/e2e/**"],
     coverage: {

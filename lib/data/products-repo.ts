@@ -1,369 +1,43 @@
 import "server-only";
-import type { Product } from "@/types";
+import { query, queryOne } from "@/lib/db";
+import type { Product, Departamento } from "@/types";
 import { similarity } from "@/lib/similarity";
 
-// Estado en memoria: catálogo semilla hasta que el backend real (FastAPI +
-// PostgreSQL) quede conectado. Único punto de lectura de productos — antes
-// cada página/componente importaba MOCK_PRODUCTS por su cuenta.
-const products: Product[] = [
-  {
-    id: "1",
-    nombre: "Audífonos Inalámbricos Pro",
-    precio: 289.9,
-    precioOriginal: 349.9,
-    stock: 24,
-    marca: "SoundMax",
-    departamento: "Electrónica",
-    imagen_url:
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Audio y audífonos",
-    rating: 4.6,
-    numResenas: 328,
-    envioGratis: true,
-    descripcion:
-      "Audífonos inalámbricos con cancelación activa de ruido, hasta 30 horas de batería con el estuche de carga y sonido de alta fidelidad ajustado para graves profundos. Ideales para música, llamadas y uso diario en la calle o la oficina.",
-  },
-  {
-    id: "2",
-    nombre: "Licuadora de Alta Potencia",
-    precio: 179.5,
-    stock: 12,
-    marca: "HogarPlus",
-    departamento: "Hogar",
-    imagen_url:
-      "https://images.unsplash.com/photo-1570222094114-d054a817e56b?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Electrodomésticos de cocina",
-    rating: 4.3,
-    numResenas: 94,
-    descripcion:
-      "Licuadora de 1200W con vaso de vidrio resistente de 1.8L, 3 velocidades más función pulso y cuchillas de acero inoxidable. Pensada para batidos, jugos y preparaciones espesas sin esfuerzo.",
-  },
-  {
-    id: "3",
-    nombre: "Chaqueta Impermeable Urbana",
-    precio: 249.0,
-    precioOriginal: 329.0,
-    stock: 8,
-    marca: "UrbanWear",
-    departamento: "Moda",
-    imagen_url:
-      "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Casacas y abrigos",
-    rating: 4.8,
-    numResenas: 156,
-    envioGratis: true,
-    esNuevo: true,
-    descripcion:
-      "Chaqueta impermeable con costuras selladas, forro térmico ligero y capucha ajustable. Diseñada para uso urbano todo el año, resiste lluvia y viento sin perder estilo.",
-  },
-  {
-    id: "4",
-    nombre: "Balón de Fútbol Profesional",
-    precio: 89.9,
-    stock: 40,
-    marca: "ProSport",
-    departamento: "Deportes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1614632537197-38a17061c2bd?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Balones",
-    rating: 4.5,
-    numResenas: 210,
-    descripcion:
-      "Balón de fútbol de competición, costura termosellada y cámara de látex de alta retención de aire. Aprobado para uso en césped natural y sintético.",
-  },
-  {
-    id: "5",
-    nombre: "Set de Brochas de Maquillaje",
-    precio: 69.9,
-    precioOriginal: 99.9,
-    stock: 60,
-    marca: "GlowBeauty",
-    departamento: "Belleza",
-    imagen_url:
-      "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Herramientas de belleza",
-    rating: 4.7,
-    numResenas: 412,
-    envioGratis: true,
-    descripcion:
-      "Set de 12 brochas profesionales con cerdas suaves sintéticas, libres de crueldad animal, y estuche de viaje incluido. Cubre rostro y ojos para un maquillaje de acabado uniforme.",
-  },
-  {
-    id: "6",
-    nombre: "Smartwatch Deportivo",
-    precio: 549.0,
-    stock: 15,
-    marca: "SoundMax",
-    departamento: "Electrónica",
-    imagen_url:
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Relojes inteligentes y wearables",
-    rating: 4.4,
-    numResenas: 87,
-    esNuevo: true,
-    descripcion:
-      "Smartwatch con GPS integrado, monitoreo de ritmo cardíaco 24/7, más de 20 modos deportivos y resistencia al agua 5ATM. Batería de hasta 7 días con notificaciones inteligentes.",
-  },
-  {
-    id: "7",
-    nombre: "Cafetera Automática",
-    precio: 289.0,
-    precioOriginal: 359.0,
-    stock: 18,
-    marca: "HogarPlus",
-    departamento: "Hogar",
-    imagen_url:
-      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Electrodomésticos de cocina",
-    rating: 4.2,
-    numResenas: 63,
-    descripcion:
-      "Cafetera automática programable con depósito de 1.5L, filtro permanente reutilizable y placa térmica que mantiene la temperatura. Prepara hasta 12 tazas por ciclo.",
-  },
-  {
-    id: "8",
-    nombre: "Tenis Running Ligeros",
-    precio: 259.9,
-    stock: 30,
-    marca: "ProSport",
-    departamento: "Moda",
-    imagen_url:
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Zapatillas y calzado",
-    rating: 4.6,
-    numResenas: 275,
-    envioGratis: true,
-    descripcion:
-      "Zapatillas running con entresuela de espuma ligera y malla transpirable. Diseñadas para amortiguar el impacto en trotes diarios y entrenamientos largos.",
-  },
-  {
-    id: "9",
-    nombre: "Perfume Eau de Parfum 100ml",
-    precio: 199.9,
-    precioOriginal: 259.9,
-    stock: 22,
-    marca: "GlowBeauty",
-    departamento: "Belleza",
-    imagen_url:
-      "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Fragancias",
-    rating: 4.9,
-    numResenas: 501,
-    envioGratis: true,
-    descripcion:
-      "Eau de parfum de larga duración con notas florales y amaderadas. Frasco de 100ml, ideal para uso diario o en ocasiones especiales.",
-  },
-  {
-    id: "10",
-    nombre: "Set de Bloques de Construcción",
-    precio: 119.9,
-    stock: 45,
-    marca: "KidsWorld",
-    departamento: "Juguetes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1587654780291-39c9404d746b?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Bloques de construcción",
-    rating: 4.7,
-    numResenas: 132,
-    esNuevo: true,
-    descripcion:
-      "Set de 350 piezas de bloques de construcción compatibles con las principales marcas del mercado. Estimula la creatividad y motricidad fina, para niños desde 6 años.",
-  },
-  {
-    id: "11",
-    nombre: "Laptop Ultradelgada 14''",
-    precio: 2799.0,
-    precioOriginal: 3199.0,
-    stock: 9,
-    marca: "SoundMax",
-    departamento: "Electrónica",
-    imagen_url:
-      "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Laptops y computadoras",
-    rating: 4.5,
-    numResenas: 58,
-    envioGratis: true,
-    descripcion:
-      "Laptop ultradelgada de 14'' con procesador de última generación, 16GB de RAM y SSD de 512GB. Pantalla de bordes reducidos y batería de todo el día para trabajo y estudio.",
-  },
-  {
-    id: "12",
-    nombre: "Canasta Familiar de Abarrotes",
-    precio: 149.9,
-    stock: 100,
-    marca: "MercaFresh",
-    departamento: "Supermercado",
-    imagen_url:
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Abarrotes y snacks",
-    rating: 4.3,
-    numResenas: 76,
-    envioGratis: true,
-    descripcion:
-      "Canasta con productos básicos de abarrotes para el hogar: arroz, aceite, azúcar, fideos y más. Pensada para abastecer a una familia durante la semana.",
-  },
-  {
-    id: "13",
-    nombre: "Sofá Modular 3 Cuerpos",
-    precio: 1899.0,
-    precioOriginal: 2299.0,
-    stock: 6,
-    marca: "HogarPlus",
-    departamento: "Hogar",
-    imagen_url:
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Muebles",
-    rating: 4.5,
-    numResenas: 41,
-    envioGratis: true,
-    descripcion:
-      "Sofá modular de 3 cuerpos tapizado en tela antimanchas, estructura de madera reforzada y cojines de espuma de alta densidad. Se adapta a espacios pequeños o grandes gracias a su diseño modular.",
-  },
-  {
-    id: "14",
-    nombre: "Set de Velas Aromáticas",
-    precio: 59.9,
-    stock: 50,
-    marca: "HogarPlus",
-    departamento: "Hogar",
-    imagen_url:
-      "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Decoración y menaje",
-    rating: 4.6,
-    numResenas: 88,
-    descripcion:
-      "Set de 3 velas aromáticas en cera de soja, aromas a vainilla, lavanda y madera de cedro. Hasta 30 horas de combustión cada una, ideales para decorar y ambientar cualquier espacio.",
-  },
-  {
-    id: "15",
-    nombre: "Polo Básico Algodón Pima",
-    precio: 49.9,
-    stock: 80,
-    marca: "UrbanWear",
-    departamento: "Moda",
-    imagen_url:
-      "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Polos y camisas",
-    rating: 4.4,
-    numResenas: 203,
-    envioGratis: true,
-    descripcion:
-      "Polo de algodón pima 100%, corte regular y cuello redondo. Suave al tacto, transpirable y resistente a los lavados frecuentes. Disponible en varios colores.",
-  },
-  {
-    id: "16",
-    nombre: "Conjunto Deportivo Training",
-    precio: 129.9,
-    precioOriginal: 169.9,
-    stock: 35,
-    marca: "ProSport",
-    departamento: "Deportes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Ropa deportiva",
-    rating: 4.5,
-    numResenas: 97,
-    esNuevo: true,
-    descripcion:
-      "Conjunto deportivo de polera y short en tela dry-fit que absorbe el sudor y se seca rápido. Ideal para entrenar en el gimnasio o al aire libre.",
-  },
-  {
-    id: "17",
-    nombre: "Set de Mancuernas Ajustables",
-    precio: 349.9,
-    stock: 14,
-    marca: "ProSport",
-    departamento: "Deportes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1584735175315-9d5df23860e6?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Equipos de fitness",
-    rating: 4.7,
-    numResenas: 65,
-    envioGratis: true,
-    descripcion:
-      "Par de mancuernas ajustables de 2 a 20 kg cada una, con sistema de cambio rápido de peso. Reemplazan hasta 10 pares de mancuernas fijas.",
-  },
-  {
-    id: "18",
-    nombre: "Paleta de Sombras Profesional",
-    precio: 89.9,
-    precioOriginal: 119.9,
-    stock: 40,
-    marca: "GlowBeauty",
-    departamento: "Belleza",
-    imagen_url:
-      "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Maquillaje",
-    rating: 4.8,
-    numResenas: 176,
-    esNuevo: true,
-    descripcion:
-      "Paleta con 18 tonos mate y shimmer, alta pigmentación y larga duración. Incluye tonos neutros y vibrantes para looks de día y de noche.",
-  },
-  {
-    id: "19",
-    nombre: "Oso de Peluche Gigante",
-    precio: 79.9,
-    stock: 25,
-    marca: "KidsWorld",
-    departamento: "Juguetes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1559454403-b8fb88521f11?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Peluches",
-    rating: 4.9,
-    numResenas: 58,
-    envioGratis: true,
-    descripcion:
-      "Oso de peluche de 80cm, relleno hipoalergénico y tela ultra suave. Un regalo clásico para bebés y niños de cualquier edad.",
-  },
-  {
-    id: "20",
-    nombre: "Auto de Juguete a Control Remoto",
-    precio: 99.9,
-    precioOriginal: 139.9,
-    stock: 30,
-    marca: "KidsWorld",
-    departamento: "Juguetes",
-    imagen_url:
-      "https://images.unsplash.com/photo-1594787318286-3d835c1d207f?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Vehículos de juguete",
-    rating: 4.5,
-    numResenas: 84,
-    descripcion:
-      "Auto a control remoto con batería recargable, velocidad de hasta 15 km/h y neumáticos todo terreno. Incluye control remoto de 2.4GHz.",
-  },
-  {
-    id: "21",
-    nombre: "Pack de Bebidas Rehidratantes",
-    precio: 39.9,
-    stock: 120,
-    marca: "MercaFresh",
-    departamento: "Supermercado",
-    imagen_url:
-      "https://images.unsplash.com/photo-1544145945-f90425340c7e?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Bebidas",
-    rating: 4.3,
-    numResenas: 47,
-    envioGratis: true,
-    descripcion:
-      "Pack de 12 unidades de bebida rehidratante en sabores surtidos. Repone electrolitos y aporta energía para el día a día o después del ejercicio.",
-  },
-  {
-    id: "22",
-    nombre: "Kit de Limpieza del Hogar",
-    precio: 69.9,
-    stock: 55,
-    marca: "MercaFresh",
-    departamento: "Supermercado",
-    imagen_url:
-      "https://images.unsplash.com/photo-1585421514738-01798e348b17?q=80&w=800&auto=format&fit=crop",
-    categoria_ia: "Limpieza del hogar",
-    rating: 4.4,
-    numResenas: 39,
-    descripcion:
-      "Kit con desinfectante multiusos, limpiavidrios, paños de microfibra y guantes. Todo lo necesario para una limpieza profunda del hogar.",
-  },
-];
+interface ProductRow {
+  id: string;
+  nombre: string;
+  precio: number;
+  stock: number;
+  marca: string;
+  departamento: string;
+  imagen_url: string | null;
+  categoria_ia: string;
+  precioOriginal: number | null;
+  rating: number | null;
+  numResenas: number | null;
+  envioGratis: boolean;
+  esNuevo: boolean;
+  descripcion: string | null;
+}
+
+function toProduct(row: ProductRow): Product {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    precio: row.precio,
+    stock: row.stock,
+    marca: row.marca,
+    departamento: row.departamento as Departamento,
+    imagen_url: row.imagen_url ?? "",
+    categoria_ia: row.categoria_ia,
+    precioOriginal: row.precioOriginal ?? undefined,
+    rating: row.rating ?? undefined,
+    numResenas: row.numResenas ?? undefined,
+    envioGratis: row.envioGratis,
+    esNuevo: row.esNuevo,
+    descripcion: row.descripcion ?? undefined,
+  };
+}
 
 export interface ProductFilters {
   q?: string;
@@ -372,147 +46,488 @@ export interface ProductFilters {
   soloNuevos?: boolean;
 }
 
+// v_productos_tienda ya filtra WHERE estado = 'publicado' y devuelve
+// exactamente la forma de Product (ver el script de la base de datos).
 export async function listProducts(
   filters: ProductFilters = {},
 ): Promise<Product[]> {
   const { q, departamento, categoria, soloNuevos } = filters;
-  return products.filter((product) => {
-    const matchesQuery = q
-      ? product.nombre.toLowerCase().includes(q.toLowerCase()) ||
-        product.marca.toLowerCase().includes(q.toLowerCase())
-      : true;
-    const matchesDepartamento = departamento
-      ? product.departamento === departamento
-      : true;
-    const matchesCategoria = categoria
-      ? product.categoria_ia === categoria
-      : true;
-    const matchesNuevo = soloNuevos ? Boolean(product.esNuevo) : true;
-    return (
-      matchesQuery && matchesDepartamento && matchesCategoria && matchesNuevo
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (q) {
+    params.push(q);
+    const i = params.length;
+    conditions.push(
+      `(f_unaccent(lower(nombre)) LIKE '%' || f_unaccent(lower($${i})) || '%'
+        OR f_unaccent(lower(marca)) LIKE '%' || f_unaccent(lower($${i})) || '%')`,
     );
-  });
+  }
+  if (departamento) {
+    params.push(departamento);
+    conditions.push(`departamento = $${params.length}`);
+  }
+  if (categoria) {
+    params.push(categoria);
+    conditions.push(`categoria_ia = $${params.length}`);
+  }
+  if (soloNuevos) {
+    conditions.push(`"esNuevo" = true`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda ${where} ORDER BY id::bigint`,
+    params,
+  );
+  return rows.map(toProduct);
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
-  return products.find((p) => p.id === id) ?? null;
+  const row = await queryOne<ProductRow>(
+    `SELECT * FROM v_productos_tienda WHERE id = $1`,
+    [id],
+  );
+  return row ? toProduct(row) : null;
 }
 
 export async function listOfertas(): Promise<Product[]> {
-  return products.filter((p) => p.precioOriginal && p.precioOriginal > p.precio);
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda
+      WHERE "precioOriginal" IS NOT NULL AND "precioOriginal" > precio
+      ORDER BY id::bigint`,
+  );
+  return rows.map(toProduct);
 }
 
 export async function listNuevos(): Promise<Product[]> {
-  return products.filter((p) => Boolean(p.esNuevo));
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda WHERE "esNuevo" = true ORDER BY id::bigint`,
+  );
+  return rows.map(toProduct);
 }
 
 export async function listRelacionados(product: Product): Promise<Product[]> {
-  return products.filter(
-    (p) => p.departamento === product.departamento && p.id !== product.id,
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda WHERE departamento = $1 AND id <> $2 ORDER BY id::bigint`,
+    [product.departamento, product.id],
   );
+  return rows.map(toProduct);
 }
 
 export async function listByMarca(marca: string): Promise<Product[]> {
-  return products.filter((p) => p.marca.toLowerCase() === marca.toLowerCase());
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda WHERE marca ILIKE $1 ORDER BY id::bigint`,
+    [marca],
+  );
+  return rows.map(toProduct);
 }
 
-export async function addProduct(product: Product): Promise<Product> {
-  products.push(product);
-  return product;
+// Usado para el catálogo de /admin/productos de un SELLER: filtra por
+// vendedor_id (identidad real de su sesión), no por el texto de `marca`
+// —que puede diferir del nombre comercial de su tienda (ver
+// isProductOwnedByVendedor).
+export async function listByVendedor(vendedorId: string): Promise<Product[]> {
+  const rows = await query<ProductRow>(
+    `SELECT * FROM v_productos_tienda WHERE vendedor_id = $1 ORDER BY id::bigint`,
+    [vendedorId],
+  );
+  return rows.map(toProduct);
 }
 
+// El `Product` público no trae vendedor_id (no es parte del contrato del
+// frontend); esto es lo que usan las Server Actions de editar/eliminar para
+// comprobar que un SELLER es realmente el dueño del producto, en vez de
+// comparar por nombre de marca (que no identifica al vendedor de forma
+// confiable — ver createProductFromAI).
+export async function isProductOwnedByVendedor(
+  productId: string,
+  vendedorId: string,
+): Promise<boolean> {
+  const row = await queryOne<{ owned: boolean }>(
+    `SELECT (vendedor_id = $2) AS owned FROM productos WHERE id = $1`,
+    [productId, vendedorId],
+  );
+  return row?.owned ?? false;
+}
+
+// true si `marca` ya tiene productos publicados a nombre de OTRO vendedor:
+// evita que un vendedor use el nombre de una marca ajena para su propio
+// producto (el dueño real de vendedorId sale de la sesión, no de este texto
+// — ver createProductFromAI — pero el texto de la marca sigue siendo libre,
+// así que esto es lo único que impide suplantar una marca existente).
+export async function isMarcaOwnedByOtherVendedor(
+  marca: string,
+  vendedorId: string,
+): Promise<boolean> {
+  const row = await queryOne<{ owned: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM productos p
+       JOIN marcas m ON m.id = p.marca_id
+       WHERE m.nombre = $1 AND p.vendedor_id <> $2
+     ) AS owned`,
+    [marca, vendedorId],
+  );
+  return row?.owned ?? false;
+}
+
+async function upsertMarca(nombre: string): Promise<number> {
+  const existing = await queryOne<{ id: number }>(
+    `SELECT id FROM marcas WHERE nombre = $1`,
+    [nombre],
+  );
+  if (existing) return existing.id;
+  const created = await queryOne<{ id: number }>(
+    `INSERT INTO marcas (nombre) VALUES ($1) RETURNING id`,
+    [nombre],
+  );
+  return created!.id;
+}
+
+async function getDepartamentoId(nombre: Departamento): Promise<number> {
+  const row = await queryOne<{ id: number }>(
+    `SELECT id FROM departamentos WHERE nombre = $1`,
+    [nombre],
+  );
+  if (!row) throw new Error(`Departamento desconocido: ${nombre}`);
+  return row.id;
+}
+
+export interface ProductPatch {
+  nombre?: string;
+  precio?: number;
+  stock?: number;
+  marca?: string;
+  departamento?: Departamento;
+}
+
+// Usado por EditProductForm (vía Server Action): no toca categoría ni
+// imagen — esas dependen de un paso de IA que, si existe, va por
+// createProductFromAI. Solo devuelve el producto si sigue publicado:
+// v_productos_tienda no muestra productos pendientes/inactivos.
 export async function updateProductRecord(
   id: string,
-  patch: Partial<Product>,
+  patch: ProductPatch,
 ): Promise<Product | null> {
-  const index = products.findIndex((p) => p.id === id);
-  if (index === -1) return null;
-  products[index] = { ...products[index], ...patch };
-  return products[index];
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  if (patch.nombre !== undefined) {
+    params.push(patch.nombre);
+    sets.push(`nombre = $${params.length}`);
+  }
+  if (patch.precio !== undefined) {
+    params.push(patch.precio);
+    sets.push(`precio = $${params.length}`);
+  }
+  if (patch.stock !== undefined) {
+    params.push(patch.stock);
+    sets.push(`stock = $${params.length}`);
+  }
+  if (patch.marca !== undefined) {
+    const marcaId = await upsertMarca(patch.marca);
+    params.push(marcaId);
+    sets.push(`marca_id = $${params.length}`);
+  }
+  if (patch.departamento !== undefined) {
+    const departamentoId = await getDepartamentoId(patch.departamento);
+    params.push(departamentoId);
+    sets.push(`departamento_id = $${params.length}`);
+  }
+
+  if (sets.length === 0) return getProductById(id);
+
+  params.push(id);
+  const result = await queryOne<{ id: string }>(
+    `UPDATE productos SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id::text AS id`,
+    params,
+  );
+  return result ? getProductById(result.id) : null;
 }
 
+// Borrado lógico: pasa a 'inactivo' en vez de DELETE (la FK de pedido_items
+// con ON DELETE RESTRICT lo impediría de todos modos si el producto ya se
+// vendió alguna vez, y 'inactivo' es justamente el estado que el esquema
+// define para esto).
 export async function removeProduct(id: string): Promise<boolean> {
-  const index = products.findIndex((p) => p.id === id);
-  if (index === -1) return false;
-  products.splice(index, 1);
-  return true;
+  const result = await queryOne<{ id: string }>(
+    `UPDATE productos SET estado = 'inactivo'
+      WHERE id = $1 AND estado = 'publicado'
+      RETURNING id::text AS id`,
+    [id],
+  );
+  return result !== null;
+}
+
+// --- Alta de producto con clasificación de IA ------------------------------
+//
+// Se usa desde app/admin/(protected)/productos/actions.ts una vez que el
+// backend de IA (lib/api.ts, externo a este repo) responde con la categoría
+// y la confianza. El producto entra con estado 'pendiente_revision' por
+// defecto; si la confianza supera REVIEW_THRESHOLD se publica de inmediato,
+// igual que antes de conectar la base.
+export const REVIEW_THRESHOLD = 0.75;
+
+export interface CreateProductFromAIInput {
+  // Si se omite (caso ADMIN, que no es vendedor), se resuelve buscando qué
+  // vendedor aprobado ya tiene productos con esta marca — ver el aviso en
+  // getVendedorIdByEmail sobre por qué nombre_comercial no sirve para esto
+  // ("SoundMax Perú" como tienda, "SoundMax" como marca de sus productos).
+  vendedorId?: string;
+  nombre: string;
+  descripcion?: string;
+  marca: string;
+  departamento: Departamento;
+  precio: number;
+  stock: number;
+  imagenUrl: string;
+  categoriaPredichaNombre: string;
+  confianza: number;
+}
+
+export interface CreateProductFromAIResult {
+  product: Product | null; // null si quedó pendiente de revisión
+  pendingReview: boolean;
+}
+
+export async function createProductFromAI(
+  input: CreateProductFromAIInput,
+): Promise<CreateProductFromAIResult> {
+  const vendedor = input.vendedorId
+    ? { id: input.vendedorId }
+    : await queryOne<{ id: string }>(
+        `SELECT DISTINCT v.id::text AS id
+           FROM vendedores v
+           JOIN productos p ON p.vendedor_id = v.id
+           JOIN marcas m ON m.id = p.marca_id
+          WHERE m.nombre = $1 AND v.estado = 'aprobado'
+          LIMIT 1`,
+        [input.marca],
+      );
+  if (!vendedor) {
+    throw new Error(
+      `No hay un vendedor aprobado para la marca "${input.marca}". Un administrador debe darla de alta en /admin/vendedores.`,
+    );
+  }
+
+  const marcaId = await upsertMarca(input.marca);
+  const departamentoId = await getDepartamentoId(input.departamento);
+
+  const categoria = await queryOne<{ id: number }>(
+    `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
+    [input.categoriaPredichaNombre, departamentoId],
+  );
+  if (!categoria) {
+    throw new Error(
+      `La categoría sugerida por la IA ("${input.categoriaPredichaNombre}") no pertenece al departamento ${input.departamento}.`,
+    );
+  }
+
+  // cu1-resnet50-v1: modelo de imagen sembrado por el script de la base.
+  // Cuando exista el servicio real de clasificación, que informe qué
+  // modelo usó en vez de asumirlo aquí.
+  const modelo = await queryOne<{ id: number }>(
+    `SELECT id FROM modelos_ia WHERE codigo = 'cu1-resnet50-v1'`,
+  );
+  if (!modelo) {
+    throw new Error("No hay ningún modelo de IA registrado en modelos_ia.");
+  }
+
+  const producto = await queryOne<{ id: string }>(
+    `INSERT INTO productos (vendedor_id, nombre, descripcion, marca_id, departamento_id, precio, stock)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id::text AS id`,
+    [
+      vendedor.id,
+      input.nombre,
+      input.descripcion ?? null,
+      marcaId,
+      departamentoId,
+      input.precio,
+      input.stock,
+    ],
+  );
+  const productoId = producto!.id;
+
+  await query(
+    `INSERT INTO producto_imagenes (producto_id, url, es_principal) VALUES ($1, $2, true)`,
+    [productoId, input.imagenUrl],
+  );
+
+  await query(
+    `INSERT INTO predicciones_ia (producto_id, modelo_id, categoria_predicha_id, confianza)
+     VALUES ($1, $2, $3, $4)`,
+    [productoId, modelo.id, categoria.id, input.confianza],
+  );
+
+  const pendingReview = input.confianza < REVIEW_THRESHOLD;
+  if (!pendingReview) {
+    await query(
+      `UPDATE productos SET categoria_id = $2, estado = 'publicado' WHERE id = $1`,
+      [productoId, categoria.id],
+    );
+  }
+
+  return {
+    product: pendingReview ? null : await getProductById(productoId),
+    pendingReview,
+  };
 }
 
 // --- Revisión de clasificaciones de IA con baja confianza -----------------
-//
-// Cuando el backend de IA clasifica un producto nuevo con una confianza por
-// debajo de este umbral, el producto no se publica directamente: entra a
-// esta cola para que un administrador confirme o corrija la categoría antes
-// de que aparezca en la tienda (ver app/admin/(protected)/productos/actions.ts
-// y app/admin/(protected)/revision).
-export const REVIEW_THRESHOLD = 0.75;
-
 export interface PendingReviewEntry {
   product: Product;
   aiAccuracy: number;
   creadoEn: string;
 }
 
-const pendingReview: PendingReviewEntry[] = [];
+interface PendingRow extends ProductRow {
+  creado_en: Date;
+  departamento_id: number;
+  prediccion_id: number | null;
+  categoria_sugerida_id: number | null;
+  confianza: number | null;
+}
 
-export async function addPendingReview(
-  product: Product,
-  aiAccuracy: number,
-): Promise<PendingReviewEntry> {
-  const entry: PendingReviewEntry = {
-    product,
-    aiAccuracy,
-    creadoEn: new Date().toISOString(),
+const SELECT_PENDIENTES = `
+  SELECT
+    p.id::text                                           AS id,
+    p.nombre,
+    p.precio::float8                                      AS precio,
+    p.stock,
+    m.nombre::text                                        AS marca,
+    d.nombre                                               AS departamento,
+    img.url                                                AS imagen_url,
+    COALESCE(cat_pred.nombre, 'Sin categoría sugerida')    AS categoria_ia,
+    p.precio_original::float8                              AS "precioOriginal",
+    p.rating_promedio::float8                              AS rating,
+    p.num_resenas                                          AS "numResenas",
+    p.envio_gratis                                         AS "envioGratis",
+    p.es_nuevo                                             AS "esNuevo",
+    p.descripcion,
+    p.departamento_id,
+    pred.id                                                AS prediccion_id,
+    pred.categoria_predicha_id                             AS categoria_sugerida_id,
+    pred.confianza::float8                                 AS confianza,
+    p.creado_en
+  FROM productos p
+  JOIN marcas m ON m.id = p.marca_id
+  JOIN departamentos d ON d.id = p.departamento_id
+  LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+  LEFT JOIN LATERAL (
+    SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY creado_en DESC LIMIT 1
+  ) pred ON true
+  LEFT JOIN categorias cat_pred ON cat_pred.id = pred.categoria_predicha_id
+  WHERE p.estado = 'pendiente_revision'
+`;
+
+function toPendingEntry(row: PendingRow): PendingReviewEntry {
+  return {
+    product: toProduct(row),
+    aiAccuracy: row.confianza ?? 0,
+    creadoEn: row.creado_en.toISOString(),
   };
-  pendingReview.push(entry);
-  return entry;
 }
 
 export async function listPendingReview(): Promise<PendingReviewEntry[]> {
-  return pendingReview;
+  const rows = await query<PendingRow>(
+    `${SELECT_PENDIENTES} ORDER BY p.creado_en`,
+  );
+  return rows.map(toPendingEntry);
 }
 
 export async function approvePendingReview(
   productId: string,
-  categoriaFinal?: string,
+  adminEmail: string,
+  categoriaFinalNombre?: string,
 ): Promise<Product | null> {
-  const index = pendingReview.findIndex(
-    (entry) => entry.product.id === productId,
+  const pending = await queryOne<{
+    prediccion_id: number | null;
+    categoria_sugerida_id: number | null;
+    departamento_id: number;
+  }>(
+    `SELECT pred.id AS prediccion_id, pred.categoria_predicha_id AS categoria_sugerida_id, p.departamento_id
+       FROM productos p
+       LEFT JOIN LATERAL (
+         SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY creado_en DESC LIMIT 1
+       ) pred ON true
+      WHERE p.id = $1 AND p.estado = 'pendiente_revision'`,
+    [productId],
   );
-  if (index === -1) return null;
+  if (!pending) return null;
 
-  const { product } = pendingReview[index];
-  const finalProduct = categoriaFinal
-    ? { ...product, categoria_ia: categoriaFinal }
-    : product;
-  pendingReview.splice(index, 1);
-  products.push(finalProduct);
-  return finalProduct;
+  let categoriaFinalId = pending.categoria_sugerida_id;
+  let accion: "aceptada" | "corregida" = "aceptada";
+  if (categoriaFinalNombre) {
+    const categoria = await queryOne<{ id: number }>(
+      `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
+      [categoriaFinalNombre, pending.departamento_id],
+    );
+    if (!categoria) {
+      throw new Error("Categoría inválida para el departamento de este producto.");
+    }
+    categoriaFinalId = categoria.id;
+    accion = categoriaFinalId === pending.categoria_sugerida_id ? "aceptada" : "corregida";
+  }
+  if (categoriaFinalId === null) {
+    throw new Error("Este producto no tiene una categoría sugerida ni una categoría final.");
+  }
+
+  const admin = await queryOne<{ id: string }>(
+    `SELECT id::text AS id FROM usuarios WHERE email = $1`,
+    [adminEmail],
+  );
+  if (!admin) throw new Error("No se encontró al administrador que aprueba.");
+
+  await query(
+    `INSERT INTO revisiones_categoria
+       (producto_id, prediccion_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      productId,
+      pending.prediccion_id,
+      pending.categoria_sugerida_id,
+      categoriaFinalId,
+      accion,
+      admin.id,
+    ],
+  );
+  // El trigger trg_revision_aplicar_categoria ya fija productos.categoria_id;
+  // solo falta pasar a publicado (trg_productos_reglas_publicacion valida
+  // que el vendedor esté aprobado y fija publicado_en).
+  await query(`UPDATE productos SET estado = 'publicado' WHERE id = $1`, [productId]);
+
+  return getProductById(productId);
 }
 
-export async function rejectPendingReview(productId: string): Promise<boolean> {
-  const index = pendingReview.findIndex(
-    (entry) => entry.product.id === productId,
+export async function rejectPendingReview(
+  productId: string,
+  motivo = "Rechazado desde el panel de revisión de IA",
+): Promise<boolean> {
+  const result = await queryOne<{ id: string }>(
+    `UPDATE productos SET estado = 'rechazado', motivo_rechazo = $2
+      WHERE id = $1 AND estado = 'pendiente_revision'
+      RETURNING id::text AS id`,
+    [productId, motivo],
   );
-  if (index === -1) return false;
-  pendingReview.splice(index, 1);
-  return true;
+  return result !== null;
 }
 
 // --- Detección de posibles duplicados --------------------------------------
-//
-// Compara, dentro de cada marca, los nombres de los productos ya publicados
-// para encontrar pares que probablemente sean el mismo producto cargado dos
-// veces (ver app/admin/(protected)/duplicados).
 export interface DuplicatePair {
   a: Product;
   b: Product;
   score: number;
 }
 
+// Compara por similitud de texto (Levenshtein normalizado, lib/similarity.ts)
+// sobre el catálogo publicado. El esquema trae su propia detección por
+// embeddings (fn_buscar_duplicados, CU5), pero requiere un modelo de IA
+// entrenado que todavía no existe; esto es la versión sin IA, ya en uso.
 export async function listPossibleDuplicates(
   threshold = 0.82,
 ): Promise<DuplicatePair[]> {
+  const products = await listProducts();
   const pairs: DuplicatePair[] = [];
   for (let i = 0; i < products.length; i++) {
     for (let j = i + 1; j < products.length; j++) {

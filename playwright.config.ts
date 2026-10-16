@@ -26,6 +26,12 @@ export default defineConfig({
     timeout: 180_000,
     env: {
       AUTH_SECRET: "e2e-test-only-secret-key-at-least-32-characters",
+      // En CI la variable real la pone el job (Postgres como servicio, ver
+      // .github/workflows/ci.yml); en local toma la de tu .env.local si ya
+      // corriste db/novastore_postgresql.sql contra tu propio Postgres.
+      DATABASE_URL:
+        process.env.DATABASE_URL ??
+        "postgresql://postgres:postgres@localhost:5432/novastore_db",
     },
   },
 });

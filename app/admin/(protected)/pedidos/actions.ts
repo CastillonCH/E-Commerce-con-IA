@@ -27,10 +27,17 @@ export async function updateOrderStatusAction(
     return { success: false, error: "Datos inválidos." };
   }
 
-  const order = await updateOrderStatus(parsed.data.orderId, parsed.data.estado);
-  if (!order) {
-    return { success: false, error: "Pedido no encontrado." };
+  try {
+    const order = await updateOrderStatus(parsed.data.orderId, parsed.data.estado);
+    if (!order) {
+      return { success: false, error: "Pedido no encontrado." };
+    }
+    return { success: true };
+  } catch (error) {
+    // trg_pedidos_cambio_estado bloquea reabrir un pedido entregado/cancelado
+    // con un mensaje ya en español, listo para mostrar.
+    const message =
+      error instanceof Error ? error.message : "No se pudo actualizar el pedido.";
+    return { success: false, error: message };
   }
-
-  return { success: true };
 }

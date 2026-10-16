@@ -1,14 +1,9 @@
-import { describe, expect, it } from "vitest";
-import {
-  createOrder,
-  listOrders,
-  listOrdersByEmail,
-  updateOrderStatus,
-} from "@/lib/data/orders-repo";
+import { afterAll, describe, expect, it } from "vitest";
+import { closePool } from "@/lib/db";
+import { createOrder, listOrders, listOrdersByEmail, updateOrderStatus } from "@/lib/data/orders-repo";
 
-function baseInput(email: string) {
+function baseInput(email: string, productId = "1", cantidad = 1) {
   return {
-    clienteNombre: "Cliente de Prueba",
     clienteEmail: email,
     direccion: {
       nombre: "Cliente de Prueba",
@@ -17,60 +12,61 @@ function baseInput(email: string) {
       telefono: "987654321",
     },
     metodoPago: "tarjeta" as const,
-    items: [
-      {
-        productId: "1",
-        nombre: "Audífonos Inalámbricos Pro",
-        imagen_url: "https://example.com/img.jpg",
-        precio: 289.9,
-        cantidad: 2,
-      },
-    ],
-    total: 579.8,
+    items: [{ productId, cantidad }],
   };
 }
 
-describe("createOrder / listOrders", () => {
-  it("crea un pedido con estado 'pendiente' y lo antepone a la lista", async () => {
-    const beforeLength = (await listOrders()).length;
-    const order = await createOrder(baseInput("nuevo-test@example.com"));
+describe.skipIf(!process.env.DATABASE_URL)(
+  "orders-repo (integración con PostgreSQL)",
+  () => {
+    afterAll(async () => {
+      await closePool();
+    });
 
-    expect(order.estado).toBe("pendiente");
-    expect(order.id).toMatch(/^PED-/);
+    it("crea un pedido con estado 'pendiente' tomando el precio real de la base, no el del cliente", async () => {
+      const beforeLength = (await listOrders()).length;
+      const order = await createOrder(baseInput("maria.fernandez@gmail.com"));
 
-    const after = await listOrders();
-    expect(after.length).toBe(beforeLength + 1);
-    expect(after[0].id).toBe(order.id);
-  });
-});
+      expect(order.estado).toBe("pendiente");
+      expect(order.id).toMatch(/^PED-/);
+      // Producto 1 = Audífonos Inalámbricos Pro, precio real 289.90.
+      expect(order.items[0].precio).toBe(289.9);
 
-describe("listOrdersByEmail", () => {
-  it("filtra sin distinguir mayúsculas/minúsculas", async () => {
-    const email = "filtro-test@example.com";
-    await createOrder(baseInput(email));
+      const after = await listOrders();
+      expect(after.length).toBe(beforeLength + 1);
+      expect(after[0].id).toBe(order.id);
+    });
 
-    const found = await listOrdersByEmail(email.toUpperCase());
-    expect(found.length).toBeGreaterThan(0);
-    expect(found.every((o) => o.clienteEmail === email)).toBe(true);
-  });
+    it("listOrdersByEmail filtra sin distinguir mayúsculas/minúsculas y no devuelve pedidos de otro cliente", async () => {
+      const order = await createOrder(baseInput("jorge.salazar@gmail.com"));
 
-  it("no devuelve pedidos de otro cliente", async () => {
-    const found = await listOrdersByEmail("nadie-tiene-este-correo@example.com");
-    expect(found).toEqual([]);
-  });
-});
+      const found = await listOrdersByEmail("JORGE.SALAZAR@gmail.com");
+      expect(found.some((o) => o.id === order.id)).toBe(true);
 
-describe("updateOrderStatus", () => {
-  it("actualiza el estado de un pedido existente", async () => {
-    const order = await createOrder(baseInput("estado-test@example.com"));
-    const updated = await updateOrderStatus(order.id, "en_camino");
-    expect(updated?.estado).toBe("en_camino");
+      const none = await listOrdersByEmail("nadie-tiene-este-correo@example.com");
+      expect(none).toEqual([]);
+    });
 
-    const [found] = await listOrdersByEmail("estado-test@example.com");
-    expect(found.estado).toBe("en_camino");
-  });
+    it("actualiza el estado de un pedido existente", async () => {
+      const order = await createOrder(baseInput("lucia.torres@hotmail.com"));
+      const updated = await updateOrderStatus(order.id, "en_camino");
+      expect(updated?.estado).toBe("en_camino");
+    });
 
-  it("devuelve null para un pedido que no existe", async () => {
-    expect(await updateOrderStatus("PED-00000000", "entregado")).toBeNull();
-  });
-});
+    it("devuelve null para un pedido que no existe", async () => {
+      expect(await updateOrderStatus("PED-00000000", "entregado")).toBeNull();
+    });
+
+    it("rechaza pedir más stock del disponible", async () => {
+      await expect(
+        createOrder(baseInput("diego.huaman@gmail.com", "13", 999)),
+      ).rejects.toThrow(/Stock insuficiente/);
+    });
+
+    it("lanza al intentar reabrir un pedido ya entregado", async () => {
+      const order = await createOrder(baseInput("valeria.rojas@outlook.com"));
+      await updateOrderStatus(order.id, "entregado");
+      await expect(updateOrderStatus(order.id, "pendiente")).rejects.toThrow(/ya está/);
+    });
+  },
+);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { closePool } from "@/lib/db";
 import {
   listProducts,
   getProductById,
@@ -6,204 +7,254 @@ import {
   listNuevos,
   listRelacionados,
   listByMarca,
-  addProduct,
   updateProductRecord,
   removeProduct,
-  addPendingReview,
+  createProductFromAI,
   listPendingReview,
   approvePendingReview,
   rejectPendingReview,
   listPossibleDuplicates,
   REVIEW_THRESHOLD,
 } from "@/lib/data/products-repo";
-import type { Product } from "@/types";
 
-function makeProduct(overrides: Partial<Product> = {}): Product {
-  return {
-    id: `test-${Math.random().toString(36).slice(2)}`,
-    nombre: "Producto de prueba",
-    precio: 99.9,
-    stock: 5,
-    marca: "TestBrand",
-    departamento: "Electrónica",
-    imagen_url: "https://example.com/img.jpg",
-    categoria_ia: "Audio y audífonos",
-    ...overrides,
-  };
-}
+describe.skipIf(!process.env.DATABASE_URL)(
+  "products-repo (integración con PostgreSQL)",
+  () => {
+    afterAll(async () => {
+      await closePool();
+    });
 
-describe("listProducts", () => {
-  it("devuelve productos del catálogo semilla", async () => {
-    const products = await listProducts();
-    expect(products.length).toBeGreaterThan(0);
-  });
+    describe("listProducts", () => {
+      it("devuelve los 22 productos semilla publicados", async () => {
+        const products = await listProducts();
+        expect(products.length).toBe(22);
+      });
 
-  it("filtra por texto en nombre o marca", async () => {
-    const products = await listProducts({ q: "audífonos" });
-    expect(products.every((p) =>
-      p.nombre.toLowerCase().includes("audífonos") ||
-      p.marca.toLowerCase().includes("audífonos"),
-    )).toBe(true);
-    expect(products.length).toBeGreaterThan(0);
-  });
+      it("filtra por texto sin distinguir tildes (audifonos -> audífonos)", async () => {
+        const products = await listProducts({ q: "audifonos" });
+        expect(products.some((p) => p.nombre === "Audífonos Inalámbricos Pro")).toBe(true);
+      });
 
-  it("filtra por departamento", async () => {
-    const products = await listProducts({ departamento: "Moda" });
-    expect(products.length).toBeGreaterThan(0);
-    expect(products.every((p) => p.departamento === "Moda")).toBe(true);
-  });
+      it("filtra por departamento", async () => {
+        const products = await listProducts({ departamento: "Moda" });
+        expect(products.length).toBeGreaterThan(0);
+        expect(products.every((p) => p.departamento === "Moda")).toBe(true);
+      });
 
-  it("filtra por soloNuevos", async () => {
-    const products = await listProducts({ soloNuevos: true });
-    expect(products.every((p) => p.esNuevo)).toBe(true);
-    expect(products.length).toBeGreaterThan(0);
-  });
-});
+      it("filtra por soloNuevos", async () => {
+        const products = await listProducts({ soloNuevos: true });
+        expect(products.length).toBeGreaterThan(0);
+        expect(products.every((p) => p.esNuevo)).toBe(true);
+      });
+    });
 
-describe("getProductById", () => {
-  it("encuentra un producto existente", async () => {
-    const product = await getProductById("1");
-    expect(product?.id).toBe("1");
-  });
+    describe("getProductById / listOfertas / listNuevos / listRelacionados", () => {
+      it("encuentra el producto 1 con sus campos reales", async () => {
+        const product = await getProductById("1");
+        expect(product?.nombre).toBe("Audífonos Inalámbricos Pro");
+        expect(product?.marca).toBe("SoundMax");
+        expect(product?.categoria_ia).toBe("Audio y audífonos");
+        expect(product?.imagen_url).toMatch(/^https:\/\//);
+      });
 
-  it("devuelve null para un id inexistente", async () => {
-    expect(await getProductById("no-existe")).toBeNull();
-  });
-});
+      it("devuelve null para un id inexistente", async () => {
+        expect(await getProductById("99999")).toBeNull();
+      });
 
-describe("listOfertas / listNuevos / listRelacionados", () => {
-  it("listOfertas solo incluye productos con descuento real", async () => {
-    const ofertas = await listOfertas();
-    expect(
-      ofertas.every((p) => p.precioOriginal && p.precioOriginal > p.precio),
-    ).toBe(true);
-  });
+      it("listOfertas solo incluye productos con descuento real", async () => {
+        const ofertas = await listOfertas();
+        expect(ofertas.length).toBeGreaterThan(0);
+        expect(
+          ofertas.every((p) => p.precioOriginal !== undefined && p.precioOriginal > p.precio),
+        ).toBe(true);
+      });
 
-  it("listNuevos solo incluye productos marcados esNuevo", async () => {
-    const nuevos = await listNuevos();
-    expect(nuevos.every((p) => p.esNuevo)).toBe(true);
-  });
+      it("listNuevos solo incluye productos marcados esNuevo", async () => {
+        const nuevos = await listNuevos();
+        expect(nuevos.length).toBeGreaterThan(0);
+        expect(nuevos.every((p) => p.esNuevo)).toBe(true);
+      });
 
-  it("listRelacionados excluye al propio producto y filtra por departamento", async () => {
-    const product = await getProductById("1");
-    const relacionados = await listRelacionados(product!);
-    expect(relacionados.some((p) => p.id === product!.id)).toBe(false);
-    expect(relacionados.every((p) => p.departamento === product!.departamento)).toBe(true);
-  });
-});
+      it("listRelacionados excluye al propio producto y filtra por departamento", async () => {
+        const product = await getProductById("1");
+        const relacionados = await listRelacionados(product!);
+        expect(relacionados.some((p) => p.id === "1")).toBe(false);
+        expect(relacionados.every((p) => p.departamento === product!.departamento)).toBe(true);
+      });
+    });
 
-describe("listByMarca", () => {
-  it("filtra sin distinguir mayúsculas/minúsculas", async () => {
-    const products = await listByMarca("soundmax");
-    expect(products.length).toBeGreaterThan(0);
-    expect(products.every((p) => p.marca.toLowerCase() === "soundmax")).toBe(true);
-  });
-});
+    describe("listByMarca", () => {
+      it("filtra sin distinguir mayúsculas/minúsculas", async () => {
+        const products = await listByMarca("soundmax");
+        expect(products.length).toBeGreaterThan(0);
+        expect(products.every((p) => p.marca.toLowerCase() === "soundmax")).toBe(true);
+      });
+    });
 
-describe("mutadores directos", () => {
-  it("addProduct agrega y getProductById lo encuentra después", async () => {
-    const product = makeProduct();
-    await addProduct(product);
-    expect(await getProductById(product.id)).toEqual(product);
-  });
+    describe("updateProductRecord / removeProduct", () => {
+      it("actualiza nombre, precio y stock de un producto publicado", async () => {
+        const updated = await updateProductRecord("2", {
+          nombre: "Licuadora Editada",
+          precio: 199.9,
+          stock: 10,
+        });
+        expect(updated?.nombre).toBe("Licuadora Editada");
+        expect(updated?.precio).toBe(199.9);
+        expect(updated?.stock).toBe(10);
+      });
 
-  it("updateProductRecord aplica un patch parcial", async () => {
-    const product = makeProduct();
-    await addProduct(product);
-    const updated = await updateProductRecord(product.id, { stock: 1 });
-    expect(updated?.stock).toBe(1);
-    expect(updated?.nombre).toBe(product.nombre);
-  });
+      it("devuelve null para un id inexistente", async () => {
+        expect(await updateProductRecord("99999", { stock: 1 })).toBeNull();
+      });
 
-  it("updateProductRecord devuelve null para un id inexistente", async () => {
-    expect(await updateProductRecord("no-existe", { stock: 1 })).toBeNull();
-  });
+      it("pasa el producto a inactivo y deja de verse en el catálogo", async () => {
+        expect(await removeProduct("3")).toBe(true);
+        expect(await getProductById("3")).toBeNull();
+      });
 
-  it("removeProduct elimina el producto y devuelve true", async () => {
-    const product = makeProduct();
-    await addProduct(product);
-    expect(await removeProduct(product.id)).toBe(true);
-    expect(await getProductById(product.id)).toBeNull();
-  });
+      it("devuelve false para un producto ya inactivo o inexistente", async () => {
+        expect(await removeProduct("3")).toBe(false);
+        expect(await removeProduct("99999")).toBe(false);
+      });
+    });
 
-  it("removeProduct devuelve false para un id inexistente", async () => {
-    expect(await removeProduct("no-existe")).toBe(false);
-  });
-});
+    describe("createProductFromAI / cola de revisión", () => {
+      it("rechaza crear un producto para una marca sin vendedor aprobado", async () => {
+        await expect(
+          createProductFromAI({
+            nombre: "Producto sin marca",
+            marca: "MarcaInexistente",
+            departamento: "Electrónica",
+            precio: 10,
+            stock: 1,
+            imagenUrl: "https://example.com/x.jpg",
+            categoriaPredichaNombre: "Audio y audífonos",
+            confianza: 0.9,
+          }),
+        ).rejects.toThrow(/vendedor aprobado/);
+      });
 
-describe("cola de revisión de IA", () => {
-  it("un producto agregado a revisión no aparece en el catálogo hasta aprobarse", async () => {
-    const product = makeProduct({ categoria_ia: "Laptops y computadoras" });
-    await addPendingReview(product, 0.5);
+      it("con confianza alta publica el producto de inmediato", async () => {
+        const result = await createProductFromAI({
+          nombre: "Parlante Bluetooth Portátil",
+          marca: "SoundMax",
+          departamento: "Electrónica",
+          precio: 129.9,
+          stock: 20,
+          imagenUrl: "https://example.com/parlante.jpg",
+          categoriaPredichaNombre: "Audio y audífonos",
+          confianza: 0.95,
+        });
+        expect(result.pendingReview).toBe(false);
+        expect(result.product?.nombre).toBe("Parlante Bluetooth Portátil");
+        expect(result.product?.categoria_ia).toBe("Audio y audífonos");
+      });
 
-    expect(await getProductById(product.id)).toBeNull();
-    const pending = await listPendingReview();
-    expect(pending.some((entry) => entry.product.id === product.id)).toBe(true);
-  });
+      it("con confianza baja queda pendiente de revisión y un admin puede aprobarla", async () => {
+        const result = await createProductFromAI({
+          nombre: "Gorra Deportiva Ajustable",
+          marca: "ProSport",
+          departamento: "Deportes",
+          precio: 39.9,
+          stock: 15,
+          imagenUrl: "https://example.com/gorra.jpg",
+          categoriaPredichaNombre: "Ropa deportiva",
+          confianza: 0.4,
+        });
+        expect(result.pendingReview).toBe(true);
+        expect(result.product).toBeNull();
 
-  it("approvePendingReview publica el producto y permite corregir la categoría", async () => {
-    const product = makeProduct({ categoria_ia: "Laptops y computadoras" });
-    await addPendingReview(product, 0.4);
+        const pending = await listPendingReview();
+        const entry = pending.find((p) => p.product.nombre === "Gorra Deportiva Ajustable");
+        expect(entry).toBeDefined();
+        expect(entry!.aiAccuracy).toBe(0.4);
+        expect(entry!.product.categoria_ia).toBe("Ropa deportiva");
 
-    const approved = await approvePendingReview(product.id, "Muebles");
-    expect(approved?.categoria_ia).toBe("Muebles");
-    expect(await getProductById(product.id)).not.toBeNull();
+        const approved = await approvePendingReview(entry!.product.id, "catalogo@novastore.pe");
+        expect(approved?.categoria_ia).toBe("Ropa deportiva");
+        expect(await getProductById(entry!.product.id)).not.toBeNull();
+      });
 
-    const pending = await listPendingReview();
-    expect(pending.some((entry) => entry.product.id === product.id)).toBe(false);
-  });
+      it("un admin puede corregir la categoría sugerida al aprobar", async () => {
+        await createProductFromAI({
+          nombre: "Casaca Deportiva Impermeable",
+          marca: "ProSport",
+          departamento: "Deportes",
+          precio: 89.9,
+          stock: 10,
+          imagenUrl: "https://example.com/casaca.jpg",
+          categoriaPredichaNombre: "Balones",
+          confianza: 0.3,
+        });
+        const pending = await listPendingReview();
+        const entry = pending.find((p) => p.product.nombre === "Casaca Deportiva Impermeable")!;
 
-  it("rejectPendingReview descarta el producto sin publicarlo", async () => {
-    const product = makeProduct();
-    await addPendingReview(product, 0.3);
+        const approved = await approvePendingReview(
+          entry.product.id,
+          "catalogo@novastore.pe",
+          "Equipos de fitness",
+        );
+        expect(approved?.categoria_ia).toBe("Equipos de fitness");
+      });
 
-    expect(await rejectPendingReview(product.id)).toBe(true);
-    expect(await getProductById(product.id)).toBeNull();
-    const pending = await listPendingReview();
-    expect(pending.some((entry) => entry.product.id === product.id)).toBe(false);
-  });
+      it("rejectPendingReview descarta el producto sin publicarlo", async () => {
+        await createProductFromAI({
+          nombre: "Producto a Rechazar",
+          marca: "KidsWorld",
+          departamento: "Juguetes",
+          precio: 19.9,
+          stock: 5,
+          imagenUrl: "https://example.com/rechazo.jpg",
+          categoriaPredichaNombre: "Peluches",
+          confianza: 0.2,
+        });
+        const pending = await listPendingReview();
+        const entry = pending.find((p) => p.product.nombre === "Producto a Rechazar")!;
 
-  it("approvePendingReview/rejectPendingReview devuelven null/false para un id que no está en revisión", async () => {
-    expect(await approvePendingReview("no-existe")).toBeNull();
-    expect(await rejectPendingReview("no-existe")).toBe(false);
-  });
+        expect(await rejectPendingReview(entry.product.id)).toBe(true);
+        expect(await getProductById(entry.product.id)).toBeNull();
+        const pendingAfter = await listPendingReview();
+        expect(pendingAfter.some((p) => p.product.id === entry.product.id)).toBe(false);
+      });
 
-  it("REVIEW_THRESHOLD está entre 0 y 1", () => {
-    expect(REVIEW_THRESHOLD).toBeGreaterThan(0);
-    expect(REVIEW_THRESHOLD).toBeLessThan(1);
-  });
-});
+      it("REVIEW_THRESHOLD está entre 0 y 1", () => {
+        expect(REVIEW_THRESHOLD).toBeGreaterThan(0);
+        expect(REVIEW_THRESHOLD).toBeLessThan(1);
+      });
+    });
 
-describe("listPossibleDuplicates", () => {
-  it("detecta dos productos de la misma marca con nombres casi idénticos", async () => {
-    const a = makeProduct({ marca: "DupBrand", nombre: "Mochila Escolar Azul" });
-    const b = makeProduct({ marca: "DupBrand", nombre: "Mochila escolar azul" });
-    await addProduct(a);
-    await addProduct(b);
+    describe("listPossibleDuplicates", () => {
+      it("detecta dos productos de la misma marca con nombres casi idénticos", async () => {
+        await createProductFromAI({
+          nombre: "Mochila Escolar Azul",
+          marca: "UrbanWear",
+          departamento: "Moda",
+          precio: 59.9,
+          stock: 10,
+          imagenUrl: "https://example.com/mochila1.jpg",
+          categoriaPredichaNombre: "Polos y camisas",
+          confianza: 0.95,
+        });
+        await createProductFromAI({
+          nombre: "Mochila escolar azul",
+          marca: "UrbanWear",
+          departamento: "Moda",
+          precio: 59.9,
+          stock: 10,
+          imagenUrl: "https://example.com/mochila2.jpg",
+          categoriaPredichaNombre: "Polos y camisas",
+          confianza: 0.95,
+        });
 
-    const duplicates = await listPossibleDuplicates();
-    expect(
-      duplicates.some(
-        (pair) =>
-          (pair.a.id === a.id && pair.b.id === b.id) ||
-          (pair.a.id === b.id && pair.b.id === a.id),
-      ),
-    ).toBe(true);
-  });
-
-  it("no compara productos de marcas distintas", async () => {
-    const a = makeProduct({ marca: "MarcaUno", nombre: "Producto Único XYZ" });
-    const b = makeProduct({ marca: "MarcaDos", nombre: "Producto Único XYZ" });
-    await addProduct(a);
-    await addProduct(b);
-
-    const duplicates = await listPossibleDuplicates();
-    expect(
-      duplicates.some(
-        (pair) =>
-          (pair.a.id === a.id && pair.b.id === b.id) ||
-          (pair.a.id === b.id && pair.b.id === a.id),
-      ),
-    ).toBe(false);
-  });
-});
+        const duplicates = await listPossibleDuplicates();
+        expect(
+          duplicates.some(
+            (pair) =>
+              pair.a.nombre.toLowerCase() === "mochila escolar azul" &&
+              pair.b.nombre.toLowerCase() === "mochila escolar azul",
+          ),
+        ).toBe(true);
+      });
+    });
+  },
+);
