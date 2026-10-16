@@ -26,6 +26,19 @@ import {
 // contrato que valida lib/ai-client.ts (ClasificarResponseSchema). Usarla
 // en vez de pegar el objeto literal en cada test evita que un campo
 // obligatorio quede desalineado entre tests sin que nadie lo note.
+// La similitud de coseno de pgvector solo mira la DIRECCIÓN del vector, no
+// su magnitud — un vector uniforme como Array(n).fill(0.01) y otro
+// Array(n).fill(0.5) apuntan exactamente a la misma dirección (similitud
+// 1.0), así que dos llamadas sin relación entre sí con un vector "de
+// relleno" fijo colisionarían como si fueran duplicados (se detectó así:
+// CI con pgvector real hizo que el test de CU5 fallara porque el producto
+// "distinto" de la pareja casi idéntica quedaba opacado por todos los
+// demás productos del archivo que comparten el mismo vector de relleno
+// por defecto). Un vector aleatorio por llamada evita esa colisión.
+function vectorAleatorio(dimension: number): number[] {
+  return Array.from({ length: dimension }, () => Math.random());
+}
+
 function clasificacionFalsa(opciones: {
   categoria: string;
   confianza: number;
@@ -69,8 +82,8 @@ function clasificacionFalsa(opciones: {
     modo === "demo"
       ? []
       : [
-          { codigo_modelo: opciones.codigoModeloImagen ?? "cu1-resnet50-v1", fuente: "imagen" as const, vector: Array(2048).fill(0.01) },
-          { codigo_modelo: opciones.codigoModeloTexto ?? "cu2-beto-v1", fuente: "texto" as const, vector: Array(768).fill(0.01) },
+          { codigo_modelo: opciones.codigoModeloImagen ?? "cu1-resnet50-v1", fuente: "imagen" as const, vector: vectorAleatorio(2048) },
+          { codigo_modelo: opciones.codigoModeloTexto ?? "cu2-beto-v1", fuente: "texto" as const, vector: vectorAleatorio(768) },
         ];
 
   return {
@@ -491,7 +504,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     describe("CU5 — duplicados por embeddings (fn_buscar_duplicados, pgvector)", () => {
       it("detecta y registra un par casi idéntico, y un admin puede confirmarlo/descartarlo", async () => {
         process.env.REVIEW_POLICY = "todos";
-        const vectorBase = Array(2048).fill(0.5);
+        const vectorBase = vectorAleatorio(2048);
         const vectorCasiIgual = vectorBase.map((v) => v + 0.0001);
         const clasificacionA = clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.9 });
         clasificacionA.embeddings[0].vector = vectorBase;
