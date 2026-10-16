@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const azureBlobHostname = process.env.AZURE_BLOB_HOSTNAME;
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -18,7 +17,7 @@ const CSP = [
   // (URL.createObjectURL sobre el archivo aún no subido).
   `img-src 'self' data: blob: https://images.unsplash.com https://lh3.googleusercontent.com${azureBlobHostname ? ` https://${azureBlobHostname}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${apiUrl} https://oauth2.googleapis.com https://www.googleapis.com`,
+  "connect-src 'self' https://oauth2.googleapis.com https://www.googleapis.com",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
