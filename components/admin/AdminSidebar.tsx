@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Sparkles,
   Copy,
+  BrainCircuit,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,12 @@ const NAV_ITEMS = [
     href: "/admin/duplicados",
     label: "Duplicados",
     icon: Copy,
+    adminOnly: true,
+  },
+  {
+    href: "/admin/modelos",
+    label: "Modelos de IA",
+    icon: BrainCircuit,
     adminOnly: true,
   },
   { href: "/admin/clientes", label: "Clientes", icon: Users, adminOnly: true },

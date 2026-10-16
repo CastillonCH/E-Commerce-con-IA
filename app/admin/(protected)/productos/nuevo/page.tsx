@@ -2,25 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { DEPARTAMENTOS } from "@/lib/taxonomy";
+import { DEPARTAMENTOS, CATEGORIAS_IA } from "@/lib/taxonomy";
 import { createProductAction } from "@/app/admin/(protected)/productos/actions";
 import { Button } from "@/components/ui/Button";
-import { FieldError, Input, Label, Select } from "@/components/ui/Input";
+import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
+import { AISuggestionPanel } from "@/components/admin/AISuggestionPanel";
+import type { AIResultado } from "@/types";
 
 const productSchema = z.object({
   nombre: z.string().trim().min(2, "El nombre es muy corto"),
+  descripcion: z
+    .string()
+    .trim()
+    .min(20, "Escribe al menos 20 caracteres")
+    .max(2000, "Máximo 2000 caracteres"),
   precio: z.coerce.number().positive("El precio debe ser mayor a 0"),
   stock: z.coerce.number().int().nonnegative("El stock no puede ser negativo"),
   marca: z.string().trim().min(2, "La marca es obligatoria"),
   departamento: z.enum(DEPARTAMENTOS, {
     message: "Selecciona un departamento",
   }),
+  categoriaVendedor: z.string().min(1, "Selecciona una categoría"),
   imagen: z.instanceof(File, {
     message: "La foto del producto es obligatoria",
   }),
@@ -32,6 +40,9 @@ type ProductFormValues = z.output<typeof productSchema>;
 export default function AdminNewProductPage() {
   const router = useRouter();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [resultado, setResultado] = useState<AIResultado | null>(null);
+  const [categoriaElegida, setCategoriaElegida] = useState<string | null>(null);
+  const [destino, setDestino] = useState<{ href: string; label: string } | null>(null);
 
   const {
     register,
@@ -42,14 +53,21 @@ export default function AdminNewProductPage() {
     resolver: zodResolver(productSchema),
     defaultValues: {
       nombre: "",
+      descripcion: "",
       marca: "",
       precio: 0,
       stock: 0,
+      categoriaVendedor: "",
     },
   });
 
+  const departamento = useWatch({ control, name: "departamento" });
+  const categoriasDisponibles = departamento ? CATEGORIAS_IA[departamento] : [];
+
   async function onSubmit(values: ProductFormValues) {
     setIsAnalyzing(true);
+    setResultado(null);
+    setDestino(null);
     const result = await createProductAction(values);
     setIsAnalyzing(false);
 
@@ -58,18 +76,20 @@ export default function AdminNewProductPage() {
       return;
     }
 
+    if (result.avisoIA) toast(result.avisoIA);
+    if (result.resultado) setResultado(result.resultado);
+    setCategoriaElegida(values.categoriaVendedor);
+
     if (result.pendingReview) {
-      toast(
-        `La IA clasificó este producto como "${result.predictedCategory}" con baja confianza (${Math.round((result.accuracy ?? 0) * 100)}%). Quedó en revisión antes de publicarse.`,
-      );
-      router.push("/admin/revision");
+      toast.success("Producto guardado — queda en revisión antes de publicarse.");
+      setDestino({ href: "/admin/revision", label: "Ir a Revisión de IA" });
       return;
     }
 
     toast.success(
-      `Producto guardado exitosamente. La IA lo ha clasificado automáticamente como: ${result.predictedCategory}`,
+      `Producto guardado y publicado${result.resultado ? ` como "${result.resultado.categoria}"` : ""}.`,
     );
-    router.push("/admin/dashboard");
+    setDestino({ href: "/admin/dashboard", label: "Ir al dashboard" });
   }
 
   return (
@@ -87,6 +107,16 @@ export default function AdminNewProductPage() {
             placeholder="Audífonos Inalámbricos Pro"
           />
           <FieldError message={errors.nombre?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="descripcion">Descripción</Label>
+          <Textarea
+            id="descripcion"
+            {...register("descripcion")}
+            placeholder="Describe el producto: material, características, qué lo hace distinto..."
+          />
+          <FieldError message={errors.descripcion?.message} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -124,13 +154,35 @@ export default function AdminNewProductPage() {
             <option value="" disabled>
               Selecciona un departamento
             </option>
-            {DEPARTAMENTOS.map((departamento) => (
-              <option key={departamento} value={departamento}>
-                {departamento}
+            {DEPARTAMENTOS.map((departamentoOpcion) => (
+              <option key={departamentoOpcion} value={departamentoOpcion}>
+                {departamentoOpcion}
               </option>
             ))}
           </Select>
           <FieldError message={errors.departamento?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="categoriaVendedor">
+            Categoría (la que tú elijas, no la de la IA)
+          </Label>
+          <Select
+            id="categoriaVendedor"
+            defaultValue=""
+            disabled={!departamento}
+            {...register("categoriaVendedor")}
+          >
+            <option value="" disabled>
+              {departamento ? "Selecciona una categoría" : "Elige primero un departamento"}
+            </option>
+            {categoriasDisponibles.map((categoria) => (
+              <option key={categoria} value={categoria}>
+                {categoria}
+              </option>
+            ))}
+          </Select>
+          <FieldError message={errors.categoriaVendedor?.message} />
         </div>
 
         <div>
@@ -156,6 +208,17 @@ export default function AdminNewProductPage() {
           {isAnalyzing ? "Analizando..." : "Guardar producto"}
         </Button>
       </form>
+
+      {destino && (
+        <div className="mt-6 flex flex-col gap-4">
+          {resultado && categoriaElegida && (
+            <AISuggestionPanel resultado={resultado} categoriaVendedor={categoriaElegida} />
+          )}
+          <Button type="button" variant="dark" onClick={() => router.push(destino.href)}>
+            {destino.label}
+          </Button>
+        </div>
+      )}
 
       {isAnalyzing && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white/90 backdrop-blur-sm">

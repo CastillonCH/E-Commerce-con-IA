@@ -7,6 +7,17 @@ const serverEnvSchema = z.object({
     .min(32, "AUTH_SECRET debe tener al menos 32 caracteres"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Módulo de IA (ai-service/) — opcionales: si faltan, el alta de
+  // producto sigue funcionando (queda en revisión sin predicción, ver
+  // lib/ai-client.ts). AI_SERVICE_URL sin AI_API_KEY es válido (el
+  // servicio puede correr sin exigir autenticación, ver ai-service/README.md).
+  AI_SERVICE_URL: z.string().url().optional(),
+  AI_API_KEY: z.string().optional(),
+  // "todos": cada ficha pasa por /admin/revision sin importar la
+  // confianza (proceso P1 del T1: el analista siempre confirma o
+  // corrige). "umbral": publica directo si confianza >= REVIEW_THRESHOLD.
+  REVIEW_POLICY: z.enum(["todos", "umbral"]).default("todos"),
+  REVIEW_THRESHOLD: z.coerce.number().min(0).max(1).default(0.75),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

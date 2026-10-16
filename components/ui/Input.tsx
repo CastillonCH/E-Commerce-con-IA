@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, forwardRef, SelectHTMLAttributes } from "react";
+import { InputHTMLAttributes, TextareaHTMLAttributes, forwardRef, SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const FIELD_CLASSES =
@@ -11,6 +11,14 @@ export const Input = forwardRef<
   <input ref={ref} className={cn(FIELD_CLASSES, className)} {...props} />
 ));
 Input.displayName = "Input";
+
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(({ className, ...props }, ref) => (
+  <textarea ref={ref} className={cn(FIELD_CLASSES, "min-h-28 resize-y", className)} {...props} />
+));
+Textarea.displayName = "Textarea";
 
 export const Select = forwardRef<
   HTMLSelectElement,
