@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+
+# Pesos entrenados y artefactos — pesan cientos de MB/GB, no van al repo.
+models/
+media/
+data/images/
+*.pt
+*.metricas.json
+metricas_comparacion.json

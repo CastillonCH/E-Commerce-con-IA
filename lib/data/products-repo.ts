@@ -1,5 +1,7 @@
 import "server-only";
 import { query, queryOne } from "@/lib/db";
+import { getServerEnv } from "@/lib/env.server";
+import type { ClasificarResponse } from "@/lib/ai-client";
 import type { Product, Departamento } from "@/types";
 import { similarity } from "@/lib/similarity";
 
@@ -89,6 +91,20 @@ export async function getProductById(id: string): Promise<Product | null> {
     [id],
   );
   return row ? toProduct(row) : null;
+}
+
+// v_productos_tienda no trae categoria_vendedor_id (no es parte del
+// contrato público de Product) — EditProductForm lo necesita para
+// preseleccionar el <select> de categoría del vendedor.
+export async function getCategoriaVendedorNombre(productId: string): Promise<string | null> {
+  const row = await queryOne<{ nombre: string | null }>(
+    `SELECT c.nombre
+       FROM productos p
+       LEFT JOIN categorias c ON c.id = p.categoria_vendedor_id
+      WHERE p.id = $1`,
+    [productId],
+  );
+  return row?.nombre ?? null;
 }
 
 export async function listOfertas(): Promise<Product[]> {
@@ -195,16 +211,21 @@ async function getDepartamentoId(nombre: Departamento): Promise<number> {
 
 export interface ProductPatch {
   nombre?: string;
+  descripcion?: string;
   precio?: number;
   stock?: number;
   marca?: string;
   departamento?: Departamento;
+  // Solo tiene efecto si `departamento` también viene en el mismo patch
+  // (el formulario de edición siempre manda los dos juntos) — necesita
+  // resolverse dentro de ese departamento por fk_productos_categoria_depto.
+  categoriaVendedor?: string;
 }
 
-// Usado por EditProductForm (vía Server Action): no toca categoría ni
-// imagen — esas dependen de un paso de IA que, si existe, va por
-// createProductFromAI. Solo devuelve el producto si sigue publicado:
-// v_productos_tienda no muestra productos pendientes/inactivos.
+// Usado por EditProductForm (vía Server Action): no toca la categoría
+// FINAL ni la imagen — eso pasa por reclassifyProduct cuando se reemplaza
+// la foto. Solo devuelve el producto si sigue publicado: v_productos_tienda
+// no muestra productos pendientes/inactivos.
 export async function updateProductRecord(
   id: string,
   patch: ProductPatch,
@@ -215,6 +236,10 @@ export async function updateProductRecord(
   if (patch.nombre !== undefined) {
     params.push(patch.nombre);
     sets.push(`nombre = $${params.length}`);
+  }
+  if (patch.descripcion !== undefined) {
+    params.push(patch.descripcion);
+    sets.push(`descripcion = $${params.length}`);
   }
   if (patch.precio !== undefined) {
     params.push(patch.precio);
@@ -229,10 +254,22 @@ export async function updateProductRecord(
     params.push(marcaId);
     sets.push(`marca_id = $${params.length}`);
   }
+  let departamentoId: number | undefined;
   if (patch.departamento !== undefined) {
-    const departamentoId = await getDepartamentoId(patch.departamento);
+    departamentoId = await getDepartamentoId(patch.departamento);
     params.push(departamentoId);
     sets.push(`departamento_id = $${params.length}`);
+  }
+  if (patch.categoriaVendedor !== undefined && departamentoId !== undefined) {
+    const categoria = await queryOne<{ id: number }>(
+      `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
+      [patch.categoriaVendedor, departamentoId],
+    );
+    if (!categoria) {
+      throw new Error(`La categoría "${patch.categoriaVendedor}" no pertenece al departamento ${patch.departamento}.`);
+    }
+    params.push(categoria.id);
+    sets.push(`categoria_vendedor_id = $${params.length}`);
   }
 
   if (sets.length === 0) return getProductById(id);
@@ -243,6 +280,73 @@ export async function updateProductRecord(
     params,
   );
   return result ? getProductById(result.id) : null;
+}
+
+// Reemplaza la foto principal y vuelve a clasificar (F4.3: "al editar,
+// permite reemplazar la foto y vuelve a clasificar"). El producto vuelve a
+// pendiente_revision salvo que REVIEW_POLICY="umbral" y la nueva confianza
+// alcance el umbral — mismo criterio que al dar de alta.
+export interface ReclassifyInput {
+  productId: string;
+  nombre: string;
+  descripcion: string;
+  imagenUrl: string;
+  clasificacion: ClasificarResponse | null;
+}
+
+export interface ReclassifyResult {
+  pendingReview: boolean;
+}
+
+export async function reclassifyProduct(input: ReclassifyInput): Promise<ReclassifyResult> {
+  const producto = await queryOne<{ departamento_id: number }>(
+    `SELECT departamento_id FROM productos WHERE id = $1`,
+    [input.productId],
+  );
+  if (!producto) throw new Error("Producto no encontrado.");
+
+  await query(
+    `UPDATE producto_imagenes SET es_principal = false WHERE producto_id = $1 AND es_principal`,
+    [input.productId],
+  );
+  const imagen = await queryOne<{ id: string }>(
+    `INSERT INTO producto_imagenes (producto_id, url, es_principal) VALUES ($1, $2, true) RETURNING id::text AS id`,
+    [input.productId, input.imagenUrl],
+  );
+  const imagenId = imagen!.id;
+
+  if (!input.clasificacion) {
+    await query(`UPDATE productos SET estado = 'pendiente_revision', categoria_id = NULL WHERE id = $1`, [
+      input.productId,
+    ]);
+    return { pendingReview: true };
+  }
+
+  const categoriaSugerida = await resolverCategoriaFinal(
+    input.clasificacion.resultado.categoria,
+    producto.departamento_id,
+  );
+  const { REVIEW_POLICY, REVIEW_THRESHOLD } = getServerEnv();
+  const puedePublicarDirecto =
+    REVIEW_POLICY === "umbral" &&
+    input.clasificacion.resultado.confianza >= REVIEW_THRESHOLD &&
+    categoriaSugerida !== null;
+
+  if (input.clasificacion.modo === "real") {
+    await persistirPrediccionesYEmbeddings(input.productId, imagenId, input.clasificacion);
+  }
+
+  if (puedePublicarDirecto) {
+    await query(`UPDATE productos SET categoria_id = $2, estado = 'publicado' WHERE id = $1`, [
+      input.productId,
+      categoriaSugerida!.id,
+    ]);
+  } else {
+    await query(`UPDATE productos SET estado = 'pendiente_revision', categoria_id = NULL WHERE id = $1`, [
+      input.productId,
+    ]);
+  }
+  return { pendingReview: !puedePublicarDirecto };
 }
 
 // Borrado lógico: pasa a 'inactivo' en vez de DELETE (la FK de pedido_items
@@ -261,13 +365,10 @@ export async function removeProduct(id: string): Promise<boolean> {
 
 // --- Alta de producto con clasificación de IA ------------------------------
 //
-// Se usa desde app/admin/(protected)/productos/actions.ts una vez que el
-// backend de IA (lib/api.ts, externo a este repo) responde con la categoría
-// y la confianza. El producto entra con estado 'pendiente_revision' por
-// defecto; si la confianza supera REVIEW_THRESHOLD se publica de inmediato,
-// igual que antes de conectar la base.
-export const REVIEW_THRESHOLD = 0.75;
-
+// Se usa desde app/admin/(protected)/productos/actions.ts, después de subir
+// la foto (lib/storage.ts) y de intentar clasificar con el microservicio de
+// IA (lib/ai-client.ts). `clasificacion` puede ser null (el servicio no
+// respondió) — nunca bloquea el alta, solo decide si hay predicción o no.
 export interface CreateProductFromAIInput {
   // Si se omite (caso ADMIN, que no es vendedor), se resuelve buscando qué
   // vendedor aprobado ya tiene productos con esta marca — ver el aviso en
@@ -275,19 +376,23 @@ export interface CreateProductFromAIInput {
   // ("SoundMax Perú" como tienda, "SoundMax" como marca de sus productos).
   vendedorId?: string;
   nombre: string;
-  descripcion?: string;
+  descripcion: string;
   marca: string;
   departamento: Departamento;
+  // Categoría elegida a mano por el vendedor (línea base del problema, T1
+  // sección 1.2.1) — se guarda en productos.categoria_vendedor_id, nunca se
+  // usa como categoría final.
+  categoriaVendedorNombre: string;
   precio: number;
   stock: number;
   imagenUrl: string;
-  categoriaPredichaNombre: string;
-  confianza: number;
+  clasificacion: ClasificarResponse | null;
 }
 
 export interface CreateProductFromAIResult {
   product: Product | null; // null si quedó pendiente de revisión
   pendingReview: boolean;
+  productId: string;
 }
 
 export async function createProductFromAI(
@@ -313,71 +418,206 @@ export async function createProductFromAI(
   const marcaId = await upsertMarca(input.marca);
   const departamentoId = await getDepartamentoId(input.departamento);
 
-  const categoria = await queryOne<{ id: number }>(
+  const categoriaVendedor = await queryOne<{ id: number }>(
     `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
-    [input.categoriaPredichaNombre, departamentoId],
+    [input.categoriaVendedorNombre, departamentoId],
   );
-  if (!categoria) {
+  if (!categoriaVendedor) {
     throw new Error(
-      `La categoría sugerida por la IA ("${input.categoriaPredichaNombre}") no pertenece al departamento ${input.departamento}.`,
+      `La categoría "${input.categoriaVendedorNombre}" no pertenece al departamento ${input.departamento}.`,
     );
   }
 
-  // cu1-resnet50-v1: modelo de imagen sembrado por el script de la base.
-  // Cuando exista el servicio real de clasificación, que informe qué
-  // modelo usó en vez de asumirlo aquí.
-  const modelo = await queryOne<{ id: number }>(
-    `SELECT id FROM modelos_ia WHERE codigo = 'cu1-resnet50-v1'`,
-  );
-  if (!modelo) {
-    throw new Error("No hay ningún modelo de IA registrado en modelos_ia.");
-  }
-
   const producto = await queryOne<{ id: string }>(
-    `INSERT INTO productos (vendedor_id, nombre, descripcion, marca_id, departamento_id, precio, stock)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO productos (vendedor_id, nombre, descripcion, marca_id, departamento_id, categoria_vendedor_id, precio, stock)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id::text AS id`,
     [
       vendedor.id,
       input.nombre,
-      input.descripcion ?? null,
+      input.descripcion,
       marcaId,
       departamentoId,
+      categoriaVendedor.id,
       input.precio,
       input.stock,
     ],
   );
   const productoId = producto!.id;
 
-  await query(
-    `INSERT INTO producto_imagenes (producto_id, url, es_principal) VALUES ($1, $2, true)`,
+  const imagen = await queryOne<{ id: string }>(
+    `INSERT INTO producto_imagenes (producto_id, url, es_principal) VALUES ($1, $2, true) RETURNING id::text AS id`,
     [productoId, input.imagenUrl],
   );
+  const imagenId = imagen!.id;
 
-  await query(
-    `INSERT INTO predicciones_ia (producto_id, modelo_id, categoria_predicha_id, confianza)
-     VALUES ($1, $2, $3, $4)`,
-    [productoId, modelo.id, categoria.id, input.confianza],
+  if (!input.clasificacion) {
+    // Sin predicción: queda en revisión manual sin categoría final — el
+    // analista la asigna a mano desde /admin/revision.
+    return { product: null, pendingReview: true, productId: productoId };
+  }
+
+  const categoriaSugerida = await resolverCategoriaFinal(
+    input.clasificacion.resultado.categoria,
+    departamentoId,
   );
 
-  const pendingReview = input.confianza < REVIEW_THRESHOLD;
-  if (!pendingReview) {
-    await query(
-      `UPDATE productos SET categoria_id = $2, estado = 'publicado' WHERE id = $1`,
-      [productoId, categoria.id],
-    );
+  const { REVIEW_POLICY, REVIEW_THRESHOLD } = getServerEnv();
+  const confianzaAlcanzaUmbral = input.clasificacion.resultado.confianza >= REVIEW_THRESHOLD;
+  const puedePublicarDirecto =
+    REVIEW_POLICY === "umbral" && confianzaAlcanzaUmbral && categoriaSugerida !== null;
+
+  if (input.clasificacion.modo === "real") {
+    await persistirPrediccionesYEmbeddings(productoId, imagenId, input.clasificacion);
+  }
+
+  if (puedePublicarDirecto) {
+    await query(`UPDATE productos SET categoria_id = $2, estado = 'publicado' WHERE id = $1`, [
+      productoId,
+      categoriaSugerida!.id,
+    ]);
   }
 
   return {
-    product: pendingReview ? null : await getProductById(productoId),
-    pendingReview,
+    product: puedePublicarDirecto ? await getProductById(productoId) : null,
+    pendingReview: !puedePublicarDirecto,
+    productId: productoId,
   };
+}
+
+// La categoría que sugiere la IA no siempre pertenece al departamento que
+// eligió el vendedor (el modelo clasifica entre las 21 sin esa
+// restricción) — productos.categoria_id SÍ la exige (fk_productos_categoria_depto).
+// Si no coincide, se devuelve null: el producto queda en revisión igual,
+// nunca se intenta publicar con una categoría de otro departamento.
+async function resolverCategoriaFinal(
+  categoriaNombre: string,
+  departamentoId: number,
+): Promise<{ id: number } | null> {
+  return queryOne<{ id: number }>(
+    `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
+    [categoriaNombre, departamentoId],
+  );
+}
+
+async function persistirPrediccionesYEmbeddings(
+  productoId: string,
+  imagenId: string,
+  clasificacion: ClasificarResponse,
+): Promise<void> {
+  for (const prediccion of clasificacion.por_modelo) {
+    const modelo = await queryOne<{ id: number }>(
+      `SELECT id FROM modelos_ia WHERE codigo = $1`,
+      [prediccion.codigo_modelo],
+    );
+    if (!modelo) continue; // modelo desconocido (no sembrado en modelos_ia) — se omite, no se inventa el id
+
+    const categoria = await queryOne<{ id: number }>(
+      `SELECT id FROM categorias WHERE nombre = $1`,
+      [prediccion.categoria],
+    );
+    if (!categoria) continue;
+
+    await query(
+      `INSERT INTO predicciones_ia
+         (producto_id, modelo_id, imagen_id, categoria_predicha_id, confianza, top_k, latencia_ms)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+      [
+        productoId,
+        modelo.id,
+        prediccion.tipo === "imagen" ? imagenId : null,
+        categoria.id,
+        prediccion.confianza,
+        JSON.stringify(
+          prediccion.top_k.map((t) => ({ categoria_id: null, categoria: t.categoria, prob: t.prob })),
+        ),
+        clasificacion.latencia_ms,
+      ],
+    );
+  }
+
+  for (const embedding of clasificacion.embeddings) {
+    const modelo = await queryOne<{ id: number }>(
+      `SELECT id FROM modelos_ia WHERE codigo = $1`,
+      [embedding.codigo_modelo],
+    );
+    if (!modelo) continue;
+
+    await query(
+      `INSERT INTO producto_embeddings (producto_id, modelo_id, fuente, embedding)
+       VALUES ($1, $2, $3, $4::vector)
+       ON CONFLICT (producto_id, modelo_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
+      [productoId, modelo.id, embedding.fuente, JSON.stringify(embedding.vector)],
+    );
+  }
+}
+
+// --- CU5: detección de duplicados a partir de los embeddings guardados ----
+export interface DuplicadoDetectado {
+  productoId: string;
+  similitud: number;
+}
+
+// Corre fn_buscar_duplicados (similitud coseno, pgvector) por cada modelo
+// con el que el producto tenga embedding, y guarda los pares por encima del
+// umbral en duplicados_detectados para que /admin/duplicados los revise.
+// Se llama después de persistirPrediccionesYEmbeddings — nunca en modo demo
+// (no hay embeddings guardados, ver persistirPrediccionesYEmbeddings).
+export async function detectarYRegistrarDuplicados(
+  productoId: string,
+  umbral = 0.9,
+): Promise<DuplicadoDetectado[]> {
+  const modelosConEmbedding = await query<{ modelo_id: number; tipo: string }>(
+    `SELECT pe.modelo_id, m.tipo
+       FROM producto_embeddings pe
+       JOIN modelos_ia m ON m.id = pe.modelo_id
+      WHERE pe.producto_id = $1`,
+    [productoId],
+  );
+
+  const porVecino = new Map<string, { imagen?: number; texto?: number }>();
+  for (const { modelo_id, tipo } of modelosConEmbedding) {
+    const vecinos = await query<{ producto_id: string; similitud: number }>(
+      `SELECT producto_id::text, similitud FROM fn_buscar_duplicados($1, $2, $3, 5)`,
+      [productoId, modelo_id, umbral],
+    );
+    for (const vecino of vecinos) {
+      const entrada = porVecino.get(vecino.producto_id) ?? {};
+      if (tipo === "imagen") entrada.imagen = vecino.similitud;
+      else entrada.texto = vecino.similitud;
+      porVecino.set(vecino.producto_id, entrada);
+    }
+  }
+
+  const detectados: DuplicadoDetectado[] = [];
+  for (const [vecinoId, sims] of porVecino) {
+    const componentes = [sims.imagen, sims.texto].filter(
+      (v): v is number => v !== undefined,
+    );
+    const combinada = componentes.reduce((a, b) => a + b, 0) / componentes.length;
+
+    const [a, b] =
+      BigInt(productoId) < BigInt(vecinoId)
+        ? [productoId, vecinoId]
+        : [vecinoId, productoId];
+
+    await query(
+      `INSERT INTO duplicados_detectados
+         (producto_a_id, producto_b_id, similitud_texto, similitud_imagen, similitud_combinada, umbral_usado)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (producto_a_id, producto_b_id) DO NOTHING`,
+      [a, b, sims.texto ?? null, sims.imagen ?? null, combinada, umbral],
+    );
+    detectados.push({ productoId: vecinoId, similitud: combinada });
+  }
+
+  return detectados;
 }
 
 // --- Revisión de clasificaciones de IA con baja confianza -----------------
 export interface PendingReviewEntry {
   product: Product;
-  aiAccuracy: number;
+  confidence: number;
   creadoEn: string;
 }
 
@@ -414,8 +654,12 @@ const SELECT_PENDIENTES = `
   JOIN marcas m ON m.id = p.marca_id
   JOIN departamentos d ON d.id = p.departamento_id
   LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+  -- Puede haber una fila de predicciones_ia por modelo (imagen + texto) —
+  -- se muestra la de mayor confianza como "la" sugerencia principal (no
+  -- hay una fila de "resultado fusionado" en predicciones_ia; el fusionado
+  -- vive solo en la respuesta de ai-service, no se vuelve a calcular acá).
   LEFT JOIN LATERAL (
-    SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY creado_en DESC LIMIT 1
+    SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST LIMIT 1
   ) pred ON true
   LEFT JOIN categorias cat_pred ON cat_pred.id = pred.categoria_predicha_id
   WHERE p.estado = 'pendiente_revision'
@@ -424,7 +668,7 @@ const SELECT_PENDIENTES = `
 function toPendingEntry(row: PendingRow): PendingReviewEntry {
   return {
     product: toProduct(row),
-    aiAccuracy: row.confianza ?? 0,
+    confidence: row.confianza ?? 0,
     creadoEn: row.creado_en.toISOString(),
   };
 }
@@ -440,6 +684,7 @@ export async function approvePendingReview(
   productId: string,
   adminEmail: string,
   categoriaFinalNombre?: string,
+  tiempoRevisionSeg?: number,
 ): Promise<Product | null> {
   const pending = await queryOne<{
     prediccion_id: number | null;
@@ -449,7 +694,7 @@ export async function approvePendingReview(
     `SELECT pred.id AS prediccion_id, pred.categoria_predicha_id AS categoria_sugerida_id, p.departamento_id
        FROM productos p
        LEFT JOIN LATERAL (
-         SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY creado_en DESC LIMIT 1
+         SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST LIMIT 1
        ) pred ON true
       WHERE p.id = $1 AND p.estado = 'pendiente_revision'`,
     [productId],
@@ -481,8 +726,8 @@ export async function approvePendingReview(
 
   await query(
     `INSERT INTO revisiones_categoria
-       (producto_id, prediccion_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+       (producto_id, prediccion_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por, tiempo_revision_seg)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       productId,
       pending.prediccion_id,
@@ -490,6 +735,7 @@ export async function approvePendingReview(
       categoriaFinalId,
       accion,
       admin.id,
+      tiempoRevisionSeg ?? null,
     ],
   );
   // El trigger trg_revision_aplicar_categoria ya fija productos.categoria_id;
@@ -513,17 +759,115 @@ export async function rejectPendingReview(
   return result !== null;
 }
 
-// --- Detección de posibles duplicados --------------------------------------
+// --- CU5: duplicados detectados por embeddings (la fuente principal) ------
+export interface DuplicateProductSummary {
+  id: string;
+  nombre: string;
+  marca: string;
+  imagenUrl: string;
+}
+
+export interface DetectedDuplicate {
+  id: number;
+  a: DuplicateProductSummary;
+  b: DuplicateProductSummary;
+  similitudTexto: number | null;
+  similitudImagen: number | null;
+  similitudCombinada: number;
+  umbralUsado: number;
+  estado: "pendiente" | "confirmado" | "descartado";
+  creadoEn: string;
+}
+
+interface DuplicateRow {
+  id: number;
+  producto_a_id: string;
+  producto_b_id: string;
+  similitud_texto: number | null;
+  similitud_imagen: number | null;
+  similitud_combinada: number;
+  umbral_usado: number;
+  estado: "pendiente" | "confirmado" | "descartado";
+  creado_en: Date;
+}
+
+async function getProductSummary(id: string): Promise<DuplicateProductSummary | null> {
+  // A diferencia de getProductById (v_productos_tienda, solo publicados):
+  // un par de duplicados casi siempre involucra un producto recién creado
+  // que SIGUE en pendiente_revision — filtrar por "publicado" acá
+  // descartaría en silencio justo los casos que importa mostrar.
+  const row = await queryOne<{ id: string; nombre: string; marca: string; imagen_url: string | null }>(
+    `SELECT p.id::text AS id, p.nombre, m.nombre::text AS marca, img.url AS imagen_url
+       FROM productos p
+       JOIN marcas m ON m.id = p.marca_id
+       LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+      WHERE p.id = $1`,
+    [id],
+  );
+  return row ? { id: row.id, nombre: row.nombre, marca: row.marca, imagenUrl: row.imagen_url ?? "" } : null;
+}
+
+export async function listDetectedDuplicates(): Promise<DetectedDuplicate[]> {
+  const rows = await query<DuplicateRow>(
+    `SELECT id, producto_a_id::text AS producto_a_id, producto_b_id::text AS producto_b_id,
+            similitud_texto::float8 AS similitud_texto, similitud_imagen::float8 AS similitud_imagen,
+            similitud_combinada::float8 AS similitud_combinada, umbral_usado::float8 AS umbral_usado,
+            estado, creado_en
+       FROM duplicados_detectados
+      ORDER BY (estado = 'pendiente') DESC, creado_en DESC`,
+  );
+
+  const resultado: DetectedDuplicate[] = [];
+  for (const row of rows) {
+    const [a, b] = await Promise.all([
+      getProductSummary(row.producto_a_id),
+      getProductSummary(row.producto_b_id),
+    ]);
+    if (!a || !b) continue; // alguno de los dos se borró de verdad (no pasa con el borrado lógico, pero por si acaso)
+    resultado.push({
+      id: row.id,
+      a,
+      b,
+      similitudTexto: row.similitud_texto,
+      similitudImagen: row.similitud_imagen,
+      similitudCombinada: row.similitud_combinada,
+      umbralUsado: row.umbral_usado,
+      estado: row.estado,
+      creadoEn: row.creado_en.toISOString(),
+    });
+  }
+  return resultado;
+}
+
+export async function resolveDuplicate(
+  id: number,
+  estado: "confirmado" | "descartado",
+  adminEmail: string,
+): Promise<boolean> {
+  const admin = await queryOne<{ id: string }>(`SELECT id::text AS id FROM usuarios WHERE email = $1`, [adminEmail]);
+  if (!admin) throw new Error("No se encontró al administrador.");
+
+  const result = await queryOne<{ id: number }>(
+    `UPDATE duplicados_detectados
+        SET estado = $2, revisado_por = $3, revisado_en = now()
+      WHERE id = $1 AND estado = 'pendiente'
+      RETURNING id`,
+    [id, estado, admin.id],
+  );
+  return result !== null;
+}
+
+// --- Respaldo sin IA: similitud de texto (Levenshtein) ---------------------
 export interface DuplicatePair {
   a: Product;
   b: Product;
   score: number;
 }
 
-// Compara por similitud de texto (Levenshtein normalizado, lib/similarity.ts)
-// sobre el catálogo publicado. El esquema trae su propia detección por
-// embeddings (fn_buscar_duplicados, CU5), pero requiere un modelo de IA
-// entrenado que todavía no existe; esto es la versión sin IA, ya en uso.
+// Solo se usa si un producto no tiene ningún embedding guardado todavía
+// (servicio de IA en modo demo, o nunca se corrió la detección) — ver
+// components/admin/DuplicatesList.tsx, que lo etiqueta explícitamente como
+// "sin IA" para no confundirlo con los pares de listDetectedDuplicates.
 export async function listPossibleDuplicates(
   threshold = 0.82,
 ): Promise<DuplicatePair[]> {

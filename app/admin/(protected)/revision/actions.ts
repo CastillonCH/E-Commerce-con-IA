@@ -7,6 +7,7 @@ import { approvePendingReview, rejectPendingReview } from "@/lib/data/products-r
 const schema = z.object({
   productId: z.string().min(1),
   categoriaFinal: z.string().trim().min(1).optional(),
+  tiempoRevisionSeg: z.number().int().nonnegative().optional(),
 });
 
 export interface ReviewActionResult {
@@ -22,11 +23,12 @@ async function requireAdmin() {
 export async function approveReviewAction(
   productId: string,
   categoriaFinal?: string,
+  tiempoRevisionSeg?: number,
 ): Promise<ReviewActionResult> {
   const admin = await requireAdmin();
   if (!admin) return { success: false, error: "No autorizado." };
 
-  const parsed = schema.safeParse({ productId, categoriaFinal });
+  const parsed = schema.safeParse({ productId, categoriaFinal, tiempoRevisionSeg });
   if (!parsed.success) return { success: false, error: "Datos inválidos." };
 
   try {
@@ -34,6 +36,7 @@ export async function approveReviewAction(
       parsed.data.productId,
       admin.email,
       parsed.data.categoriaFinal,
+      parsed.data.tiempoRevisionSeg,
     );
     if (!product) return { success: false, error: "El producto ya no está en revisión." };
     return { success: true };

@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# fotos de producto subidas en desarrollo local (lib/storage.ts) —
+# en producción van a Azure Blob Storage, no al disco del contenedor
+public/uploads/

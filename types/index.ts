@@ -21,24 +21,32 @@ export interface Product {
   descripcion?: string;
 }
 
-export interface AIResponse {
-  success: boolean;
-  predicted_category: string;
-  accuracy: number;
+export interface AITopK {
+  categoria: string;
+  prob: number;
+}
+
+// Resultado fusionado (imagen+texto) que devuelve ai-service — ver
+// ai-service/app/esquemas.py::ResultadoClasificacion. `confidence` en vez
+// de `accuracy`: accuracy es una métrica del MODELO (qué tan bien
+// clasifica en general, medida en el conjunto de prueba), confidence es
+// la probabilidad de ESTA predicción puntual — nunca fueron lo mismo.
+export interface AIResultado {
+  categoria: string;
+  confidence: number;
+  topK: AITopK[];
+  modo: "real" | "demo";
 }
 
 export interface NewProductInput {
   nombre: string;
+  descripcion: string;
   precio: number;
   stock: number;
   marca: string;
   departamento: Departamento;
+  categoriaVendedor: string;
   imagen: File;
-}
-
-export interface CreateProductResponse {
-  producto: Product;
-  ai: AIResponse;
 }
 
 export interface CartItem {

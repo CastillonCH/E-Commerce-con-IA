@@ -289,7 +289,10 @@ CREATE TRIGGER trg_productos_reglas_publicacion
 CREATE TABLE producto_imagenes (
     id            bigint        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     producto_id   bigint        NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
-    url           varchar(500)  NOT NULL CHECK (url ~ '^https://'),
+    -- https:// siempre (Azure Blob en producción); también http:// para el
+    -- fallback de desarrollo local sin Azure configurado (lib/storage.ts)
+    -- — ver db/migraciones/001_permitir_http_en_producto_imagenes.sql.
+    url           varchar(500)  NOT NULL CHECK (url ~ '^https?://'),
     blob_path     varchar(300),                          -- ruta dentro del contenedor
     es_principal  boolean       NOT NULL DEFAULT false,
     orden         smallint      NOT NULL DEFAULT 0,
