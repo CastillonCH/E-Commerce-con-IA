@@ -290,18 +290,38 @@ def traducir_a_espanol(df: pd.DataFrame, tamano_lote: int = 16) -> pd.DataFrame:
 MIN_EJEMPLOS_PARA_PARTIR = 10  # ver el porqué en el mensaje de error de abajo
 
 
-def particionar(df: pd.DataFrame, seed: int = SEMILLA) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def particionar(
+    df: pd.DataFrame,
+    seed: int = SEMILLA,
+    min_ejemplos: int = MIN_EJEMPLOS_PARA_PARTIR,
+    estratificar: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """70/15/15 estratificado por categoría, semilla fija — TODOS los
     notebooks deben usar exactamente esta partición para que las métricas
-    sean comparables entre CU1, CU2 y la fusión."""
+    sean comparables entre CU1, CU2 y la fusión.
+
+    `estratificar=False` (solo para MODO_RAPIDO de los notebooks, con
+    datasets diminutos de pocas filas por clase) hace un split simple sin
+    garantizar que cada clase aparezca en los 3 conjuntos — la partición
+    resultante no sirve para entrenar nada real, solo para probar que el
+    pipeline corre de punta a punta. Con estratificar=True (el caso
+    normal), una clase con menos de `min_ejemplos` ejemplos corta la
+    corrida con un mensaje claro en vez de que sklearn falle con un
+    traceback críptico (o, con muy pocos ejemplos, un solo miembro de una
+    clase no se puede repartir en 3 conjuntos de ninguna forma)."""
     from sklearn.model_selection import train_test_split
 
+    if not estratificar:
+        train, resto = train_test_split(df, test_size=0.30, random_state=seed)
+        val, test = train_test_split(resto, test_size=0.50, random_state=seed)
+        return train.reset_index(drop=True), val.reset_index(drop=True), test.reset_index(drop=True)
+
     conteo = df["categoria"].value_counts()
-    debiles = conteo[conteo < MIN_EJEMPLOS_PARA_PARTIR]
+    debiles = conteo[conteo < min_ejemplos]
     if len(debiles) > 0:
         raise ValueError(
             f"No se puede partir 70/15/15 de forma estratificada: {dict(debiles)} tienen menos de "
-            f"{MIN_EJEMPLOS_PARA_PARTIR} ejemplos (con una partición en 3 estratificada, el 15% más "
+            f"{min_ejemplos} ejemplos (con una partición en 3 estratificada, el 15% más "
             "chico necesita al menos un puñado de ejemplos de cada clase, o la partición falla o "
             "queda vacía para esa clase). Sube --max-por-clase, corre con --complementar-abo, o "
             "revisa ml/mapeo_categorias.py para esas clases."
