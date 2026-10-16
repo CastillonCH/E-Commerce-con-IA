@@ -80,3 +80,15 @@ export interface Order {
 export interface ApiErrorResponse {
   detail: string;
 }
+
+export type VendorStatus = "pendiente" | "aprobado" | "rechazado" | "suspendido";
+
+export interface Vendedor {
+  id: string;
+  nombre: string;
+  email: string;
+  categoria: string | null;
+  estado: VendorStatus;
+  fecha: string;
+  productos: number;
+}

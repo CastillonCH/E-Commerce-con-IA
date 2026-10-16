@@ -1,6 +1,6 @@
 import "server-only";
 import bcrypt from "bcryptjs";
-import type { UserRole } from "@/types";
+import type { UserRole, Vendedor, VendorStatus } from "@/types";
 import { query, queryOne, isPgError, PG_ERROR } from "@/lib/db";
 
 export interface UserRecord {
@@ -144,4 +144,74 @@ export async function listSellers(): Promise<UserRecord[]> {
        FROM usuarios WHERE rol = 'SELLER' ORDER BY creado_en`,
   );
   return rows.map(toUserRecord);
+}
+
+interface VendedorRow {
+  id: string;
+  nombre: string;
+  email: string;
+  categoria: string | null;
+  estado: VendorStatus;
+  fecha: Date;
+  productos: number;
+}
+
+function toVendedor(row: VendedorRow): Vendedor {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    email: row.email,
+    categoria: row.categoria,
+    estado: row.estado,
+    fecha: row.fecha.toISOString().slice(0, 10),
+    productos: Number(row.productos),
+  };
+}
+
+// Solicitudes de vendedor a la espera de aprobación/rechazo.
+export async function listPendingVendedores(): Promise<Vendedor[]> {
+  const rows = await query<VendedorRow>(
+    `SELECT * FROM v_admin_vendedores WHERE estado = 'pendiente' ORDER BY fecha`,
+  );
+  return rows.map(toVendedor);
+}
+
+// Vendedores ya aprobados, operando en la tienda.
+export async function listActiveVendedores(): Promise<Vendedor[]> {
+  const rows = await query<VendedorRow>(
+    `SELECT * FROM v_admin_vendedores WHERE estado = 'aprobado' ORDER BY nombre`,
+  );
+  return rows.map(toVendedor);
+}
+
+export async function approveVendedorApplication(
+  vendedorId: string,
+  adminEmail: string,
+): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `UPDATE vendedores
+        SET estado = 'aprobado',
+            revisado_por = (SELECT id FROM usuarios WHERE email = $2)
+      WHERE id = $1 AND estado = 'pendiente'
+      RETURNING id`,
+    [vendedorId, adminEmail],
+  );
+  return row !== null;
+}
+
+export async function rejectVendedorApplication(
+  vendedorId: string,
+  adminEmail: string,
+  motivo = "Rechazado por el administrador.",
+): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `UPDATE vendedores
+        SET estado = 'rechazado',
+            motivo_rechazo = $3,
+            revisado_por = (SELECT id FROM usuarios WHERE email = $2)
+      WHERE id = $1 AND estado = 'pendiente'
+      RETURNING id`,
+    [vendedorId, adminEmail, motivo],
+  );
+  return row !== null;
 }
