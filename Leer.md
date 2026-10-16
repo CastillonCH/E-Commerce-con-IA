@@ -3,10 +3,14 @@
 Frontend de un e-commerce tipo tienda departamental con clasificación
 automática de productos vía IA. Next.js habla **directo con PostgreSQL**
 (`db/novastore_postgresql.sql`, esquema `novastore`) para catálogo,
-usuarios y pedidos — no hay un backend FastAPI intermedio. El único punto
-que sigue hablando con un servicio externo es la clasificación de imágenes
-por IA al dar de alta un producto (`NEXT_PUBLIC_API_URL`, `lib/api.ts`);
-mientras ese servicio no exista, esa única acción falla con un error de red
+usuarios y pedidos — no hay un backend FastAPI intermedio para el CRUD de
+la tienda. El único punto que sigue hablando con un servicio externo es
+la clasificación de imágenes por IA al dar de alta un producto
+(`NEXT_PUBLIC_API_URL`, `lib/api.ts`): ese servicio sí es FastAPI, vive en
+`ai-service/` (ver su propio `README.md`) y es el módulo de IA
+(PyTorch + Hugging Face) que pide el proyecto — CU1 clasificación por
+imagen, CU2 por texto, CU5 detección de duplicados. Mientras no lo
+entrenes y levantes, dar de alta un producto falla con un error de red
 controlado, pero no afecta al resto de la app.
 
 Diseño inspirado en Samsung.com (blanco/negro + un único acento de color,
@@ -161,6 +165,8 @@ proxy.ts                      Protección de /admin, /perfil, /checkout (reempla
 db/novastore_postgresql.sql   Esquema + datos semilla + pruebas automáticas de la base
 tests/e2e/                    Playwright + axe-core
 tests/db-global-setup.ts      Recarga el esquema antes de correr lib/data/*.test.ts
+ai-service/                  Módulo de IA (FastAPI + PyTorch/Hugging Face) — CU1/CU2/CU5,
+                              proyecto Python aparte, ver ai-service/README.md
 ```
 
 ## Capa de datos
@@ -204,8 +210,13 @@ y funciones que trae `db/novastore_postgresql.sql`:
 
 ## Límites conocidos
 
-- La clasificación de imágenes por IA (`NEXT_PUBLIC_API_URL`) es un
-  servicio externo que todavía no existe en este repo; dar de alta un
-  producto nuevo falla con un error de red hasta que se despliegue.
+- El módulo de IA (`ai-service/`) ya tiene código (servicio FastAPI +
+  scripts de entrenamiento), pero **ningún modelo está entrenado
+  todavía** — no hay dataset ni pesos. Hasta que corras
+  `ai-service/scripts/train_cu1_image.py` y `train_cu2_text.py` con datos
+  reales, dar de alta un producto nuevo falla con un error de red
+  controlado (`NEXT_PUBLIC_API_URL`), o con 503 si el servicio está
+  levantado pero sin checkpoints. Ver `ai-service/README.md` para el plan
+  de datos y los dos bloqueos (red y cómputo) que encontré al armarlo.
 - Editar un producto no permite reemplazar su foto (eso dispararía una
   nueva clasificación de IA, que depende del mismo servicio pendiente).
