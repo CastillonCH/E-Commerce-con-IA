@@ -209,5 +209,3 @@ y funciones que trae `db/novastore_postgresql.sql`:
   producto nuevo falla con un error de red hasta que se despliegue.
 - Editar un producto no permite reemplazar su foto (eso dispararía una
   nueva clasificación de IA, que depende del mismo servicio pendiente).
-- `/admin/vendedores` (aprobar/rechazar solicitudes) sigue siendo una
-  vista de ejemplo sin conectar a la tabla `vendedores`.
