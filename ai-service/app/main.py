@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import CATEGORIAS, DIMENSION_EMBEDDING, TAMANO_MAXIMO_IMAGEN_BYTES, TIPOS_IMAGEN_PERMITIDOS, settings
 from app.esquemas import ClasificarResponse, EmbeddingSalida, HealthResponse, ModeloInfo, PorModelo, ResultadoClasificacion
 from app.modelos import cargador_imagen, cargador_texto, demo
+from app.modelos.distribucion import resumir
 from app.modelos.registro import Registro, cargar_registro
 
 logging.basicConfig(level=logging.INFO)
@@ -89,77 +90,63 @@ def crear_app(models_dir: Path | None = None) -> FastAPI:
             latencia_ms = int((time.perf_counter() - inicio) * 1000)
             return ClasificarResponse(modo="demo", latencia_ms=latencia_ms, resultado=resultado, por_modelo=por_modelo, embeddings=embeddings)
 
-        distribuciones: list[tuple[list[float], float]] = []  # (vector de 21 probs, peso)
+        # Cada submodelo devuelve sus 21 probabilidades YA en el orden de
+        # la taxonomía (ver app/modelos/distribucion.py), así se pueden
+        # promediar posición a posición sin mezclar categorías.
+        distribuciones_imagen: list[list[float]] = []
+        distribucion_texto: list[float] | None = None
 
         for codigo, modelo_imagen in registro.modelos_imagen.items():
             try:
-                indice, categoria, confianza, top_k = cargador_imagen.clasificar(modelo_imagen, imagen_bytes)
+                vector = cargador_imagen.distribucion(modelo_imagen, imagen_bytes)
             except Exception:
                 logger.exception("Fallo clasificando imagen con %s", codigo)
                 continue
-            por_modelo.append(PorModelo(codigo_modelo=codigo, tipo="imagen", indice_clase=indice, categoria=categoria, confianza=confianza, top_k=top_k))
+            _agregar_por_modelo(por_modelo, codigo, "imagen", vector)
             embeddings.append(EmbeddingSalida(codigo_modelo=codigo, fuente="imagen", vector=cargador_imagen.embedding(modelo_imagen, imagen_bytes)))
-            distribuciones.append((_distribucion_desde_top_k(top_k, categoria, confianza), settings.peso_fusion_imagen))
+            distribuciones_imagen.append(vector)
 
         if registro.modelo_beto:
-            indice, categoria, confianza, top_k = cargador_texto.clasificar_beto(registro.modelo_beto, titulo, descripcion)
-            por_modelo.append(PorModelo(codigo_modelo="cu2-beto-v1", tipo="texto", indice_clase=indice, categoria=categoria, confianza=confianza, top_k=top_k))
+            distribucion_texto = cargador_texto.distribucion_beto(registro.modelo_beto, titulo, descripcion)
+            _agregar_por_modelo(por_modelo, "cu2-beto-v1", "texto", distribucion_texto)
             embeddings.append(EmbeddingSalida(codigo_modelo="cu2-beto-v1", fuente="texto", vector=cargador_texto.embedding_beto(registro.modelo_beto, titulo, descripcion)))
-            distribuciones.append((_distribucion_desde_top_k(top_k, categoria, confianza), 1 - settings.peso_fusion_imagen))
         elif registro.modelo_tfidf:
-            indice, categoria, confianza, top_k = cargador_texto.clasificar_tfidf(registro.modelo_tfidf, titulo, descripcion)
-            por_modelo.append(PorModelo(codigo_modelo="cu2-tfidf-logreg-v1", tipo="texto", indice_clase=indice, categoria=categoria, confianza=confianza, top_k=top_k))
-            distribuciones.append((_distribucion_desde_top_k(top_k, categoria, confianza), 1 - settings.peso_fusion_imagen))
+            distribucion_texto = cargador_texto.distribucion_tfidf(registro.modelo_tfidf, titulo, descripcion)
+            _agregar_por_modelo(por_modelo, "cu2-tfidf-logreg-v1", "texto", distribucion_texto)
 
-        resultado = _fusionar(distribuciones)
+        resultado = fusionar(distribuciones_imagen, distribucion_texto, settings.peso_fusion_imagen)
         latencia_ms = int((time.perf_counter() - inicio) * 1000)
         return ClasificarResponse(modo="real", latencia_ms=latencia_ms, resultado=resultado, por_modelo=por_modelo, embeddings=embeddings)
 
     return app
 
 
-def _distribucion_desde_top_k(top_k, categoria_top: str, confianza_top: float) -> list[float]:
-    """Vector de 21 probabilidades a partir del top_k que devuelve cada
-    submodelo (no siempre trae las 21) — el resto de la masa se reparte
-    uniformemente, suficiente para promediar entre modalidades."""
-    vector = [0.0] * len(CATEGORIAS)
-    asignado = 0.0
-    for entrada in top_k:
-        vector[entrada.indice_clase] = entrada.prob
-        asignado += entrada.prob
-    vector[CATEGORIAS.index(categoria_top)] = confianza_top
-    asignado = sum(vector)
-    restante = max(1 - asignado, 0.0)
-    indices_sin_asignar = [i for i, v in enumerate(vector) if v == 0.0]
-    if indices_sin_asignar and restante > 0:
-        reparto = restante / len(indices_sin_asignar)
-        for i in indices_sin_asignar:
-            vector[i] = reparto
-    return vector
+def _agregar_por_modelo(por_modelo: list[PorModelo], codigo: str, tipo: str, vector: list[float]) -> None:
+    indice, categoria, confianza, top_k = resumir(vector)
+    por_modelo.append(PorModelo(codigo_modelo=codigo, tipo=tipo, indice_clase=indice, categoria=categoria, confianza=confianza, top_k=top_k))
 
 
-def _fusionar(distribuciones: list[tuple[list[float], float]]) -> ResultadoClasificacion:
-    if not distribuciones:
+def fusionar(distribuciones_imagen: list[list[float]], distribucion_texto: list[float] | None, peso_imagen: float) -> ResultadoClasificacion:
+    """P = peso_imagen * promedio(modelos de imagen) + (1 - peso_imagen) * P_texto.
+
+    Es exactamente la misma fórmula con la que ml/evaluar_fusion.py elige
+    PESO_FUSION_IMAGEN en validación, así el valor que recomienda ese
+    script significa lo mismo acá. Si falta una de las dos modalidades,
+    se usa solo la que hay."""
+    if not distribuciones_imagen and distribucion_texto is None:
         raise HTTPException(status_code=503, detail="No hay modelos cargados para clasificar (ni en modo real ni demo).")
 
-    peso_total = sum(peso for _, peso in distribuciones) or 1.0
-    combinado = [0.0] * len(CATEGORIAS)
-    for vector, peso in distribuciones:
-        for i, valor in enumerate(vector):
-            combinado[i] += valor * (peso / peso_total)
+    n = len(CATEGORIAS)
+    imagen = [sum(v[i] for v in distribuciones_imagen) / len(distribuciones_imagen) for i in range(n)] if distribuciones_imagen else None
+    if imagen is None:
+        combinado = distribucion_texto
+    elif distribucion_texto is None:
+        combinado = imagen
+    else:
+        combinado = [peso_imagen * imagen[i] + (1 - peso_imagen) * distribucion_texto[i] for i in range(n)]
 
-    indice = max(range(len(CATEGORIAS)), key=lambda i: combinado[i])
-    orden = sorted(range(len(CATEGORIAS)), key=lambda i: combinado[i], reverse=True)[:5]
-    top_k = [{"indice_clase": i, "categoria": CATEGORIAS[i], "prob": combinado[i]} for i in orden]
-
-    from app.esquemas import TopK
-
-    return ResultadoClasificacion(
-        indice_clase=indice,
-        categoria=CATEGORIAS[indice],
-        confianza=combinado[indice],
-        top_k=[TopK(**entrada) for entrada in top_k],
-    )
+    indice, categoria, confianza, top_k = resumir(combinado)
+    return ResultadoClasificacion(indice_clase=indice, categoria=categoria, confianza=confianza, top_k=top_k)
 
 
 app = crear_app()

@@ -136,10 +136,18 @@ al resto de la app un objeto a medio validar).
 }
 ```
 
-- `resultado` es la predicción **fusionada** (imagen y texto combinados
-  con `PESO_FUSION_IMAGEN`, default 0.6) — es lo que ve el vendedor en el
-  panel de sugerencia y lo que usa `productos.categoria_id` si la
-  política de revisión permite publicar directo.
+- `resultado` es la predicción **fusionada**:
+  `P = PESO_FUSION_IMAGEN · promedio(modelos de imagen) + (1 − PESO_FUSION_IMAGEN) · P_texto`,
+  sobre las 21 probabilidades completas de cada modelo — es lo que ve el
+  vendedor en el panel de sugerencia y lo que usa `productos.categoria_id`
+  si la política de revisión permite publicar directo. Es la misma fórmula
+  con la que `ml/evaluar_fusion.py` elige el peso en validación.
+- Todos los `indice_clase` son el de la **taxonomía** (`categorias.indice_clase`),
+  no la posición de salida del modelo: cada artefacto trae sus clases en
+  el orden en que se entrenó (sklearn las ordena alfabéticamente, por
+  ejemplo), así que `app/modelos/distribucion.py` las reordena siempre por
+  **nombre**. Un artefacto con una clase que no está en la taxonomía no se
+  carga (queda en el log) en vez de producir predicciones desalineadas.
 - `por_modelo` es la predicción de **cada modelo por separado**, sin
   fusionar — se persiste una fila por entrada en `predicciones_ia`
   (solo en modo real; en modo demo, `por_modelo` trae un único modelo

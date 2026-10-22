@@ -8,6 +8,14 @@ No vas a programar nada acá: los notebooks ya están escritos
 (`ml/notebooks/`). Solo tienes que abrirlos, correrlos de arriba a abajo,
 y al final copiar lo que generaron a tu máquina.
 
+> Si tienes una PC con GPU NVIDIA, es más simple entrenar ahí sin Colab:
+> ver `docs/ENTRENAMIENTO_LOCAL.md`. Los notebooks 01-03 corren
+> exactamente los mismos scripts (`ml/entrenar_*.py`), así que el
+> resultado es el mismo por cualquiera de los dos caminos.
+>
+> Sube a Drive la carpeta `ml/` completa del repositorio (los notebooks
+> necesitan los scripts que están ahí), en `MyDrive/NovaStore_IA/ml/`.
+
 ## 0. Antes de empezar
 
 - Necesitas una cuenta de Google (Gmail alcanza) con algo de espacio
@@ -83,11 +91,11 @@ español explicando qué hace cada paso), usa Shift+Enter en cada una.
 
 ### 00 — Preparar el dataset
 
-Descarga `Shopify/product-catalogue` de Hugging Face, lo mapea a las 21
-categorías de NovaStore, traduce al español lo que no esté en español,
+Arma el dataset con Shopify/product-catalogue más dos fuentes
+complementarias de licencia abierta para las clases que Shopify casi no
+tiene (ver `ml/DATASET.md`), traduce al español lo que haga falta,
 separa en entrenamiento/validación/prueba (70/15/15, semilla fija), y
-guarda todo en tu Drive. Tiempo esperado: 10-20 minutos (descarga de
-datos + traducción).
+guarda todo en tu Drive. Tiempo estimado: 15-30 minutos.
 
 ### 01 — Baseline de CU2 (TF-IDF + Regresión logística)
 
@@ -97,20 +105,19 @@ modelo más caro.
 
 ### 02 — CU2: fine-tuning de BETO
 
-Ajusta BETO (un BERT en español) a las 21 categorías. Con GPU T4:
-15-30 minutos. Meta del proyecto: F1-macro ≥ 0.85 en el conjunto de
-prueba, y superar al baseline del notebook 01.
+Ajusta BETO (un BERT en español) a las 21 categorías. Tiempo estimado
+con GPU T4: 15-30 minutos. Meta del proyecto: F1-macro ≥ 0.85 en el
+conjunto de prueba, y superar al baseline del notebook 01.
 
-### 03 — CU1: ResNet-50 + EfficientNet-B0 (imagen)
+### 03 — CU1: ResNet-50 + EfficientNet-B0 (imagen) y fusión
 
-El más largo: entrena dos arquitecturas de imagen y además un modelo de
-fusión imagen+texto. Con GPU T4: 30-60 minutos. Meta del proyecto:
-accuracy ≥ 0.80 y F1-macro ≥ 0.75 en el conjunto de prueba (para al
-menos una de las dos arquitecturas).
+El más largo: entrena dos arquitecturas de imagen y después evalúa la
+fusión imagen+texto (necesita que ya hayas corrido 01 y/o 02). Tiempo
+estimado con GPU T4: 45-90 minutos. Meta del proyecto: accuracy ≥ 0.80 y
+F1-macro ≥ 0.75 en el conjunto de prueba.
 
-Si Colab te desconecta a la mitad, los checkpoints intermedios que
-guarda en Drive te permiten retomar sin repetir todo desde cero (el
-notebook explica esto en sus celdas de texto cuando corresponde).
+Si Colab te desconecta a la mitad, el mejor checkpoint hasta ese momento
+ya quedó guardado en Drive (`modelo.pt` se reescribe en cada mejora).
 
 ## 5. Qué te queda al final de cada notebook
 
@@ -122,16 +129,18 @@ Cada notebook deja todo dentro de tu Drive, en
   notebook sobre el conjunto de **prueba** (nunca inventado — si no se
   pudo calcular algo, el campo no está).
 - `matriz_confusion.png` (y `curvas_entrenamiento.png` en 02 y 03).
-- Uno o más `registro_modelo.sql` — un `UPDATE` listo para pegar en tu
-  base de datos (ver el paso 7).
+- Un `registro_modelo.sql` — un `UPDATE` listo para pegar en tu base de
+  datos (ver el paso 7).
 
-Concretamente, según el notebook:
+Concretamente, según el notebook (una carpeta por `modelos_ia.codigo`,
+con los mismos nombres de archivo que carga `ai-service`):
 
-| Notebook | Carpeta en Drive | Archivos |
+| Notebook | Carpeta en Drive | Modelo |
 |---|---|---|
-| 01 | `ml/modelos/cu2-tfidf-logreg-v1/` | `pipeline.joblib`, `metricas.json`, `registro_modelo.sql` |
-| 02 | `ml/modelos/cu2-beto-v1/` | `config.json`, `model.safetensors`, `tokenizer...` (carpeta completa de `save_pretrained`), `metricas.json`, `registro_modelo.sql` |
-| 03 | `ml/modelos/cu1-imagen/` | `resnet50.pt`, `efficientnet_b0.pt`, `metricas_resnet50.json`, `metricas_efficientnet_b0.json`, `registro_modelo_cu1-resnet50-v1.sql`, `registro_modelo_cu1-efficientnet-b0-v1.sql` |
+| 01 | `ml/modelos/cu2-tfidf-logreg-v1/` | `pipeline.joblib` |
+| 02 | `ml/modelos/cu2-beto-v1/` | carpeta completa de `save_pretrained` (`config.json`, `model.safetensors`, tokenizer…) |
+| 03 | `ml/modelos/cu1-resnet50-v1/` y `ml/modelos/cu1-efficientnet-b0-v1/` | `modelo.pt` en cada una |
+| 03 (fusión) | `ml/modelos/fusion/` | `metricas_fusion.json` con el `PESO_FUSION_IMAGEN` recomendado |
 
 ## 6. Descargar de Drive y copiar a `ai-service/models/`
 
@@ -154,35 +163,20 @@ ai-service/models/
     metricas.json
 ```
 
-Primero descarga la carpeta `NovaStore_IA/ml/modelos/` entera desde
-Google Drive a tu computadora (clic derecho sobre la carpeta → Descargar
-— Drive la empaqueta en un .zip). Descomprímela donde te resulte
-cómodo, por ejemplo en `Descargas\NovaStore_IA\ml\modelos\`.
-
-**01 y 02 se copian directo**, sin renombrar nada — la carpeta que armó
-el notebook ya tiene el nombre y la forma que `ai-service` espera:
+Descarga la carpeta `NovaStore_IA/ml/modelos/` entera desde Google Drive
+(clic derecho sobre la carpeta → Descargar — Drive la empaqueta en un
+.zip) y descomprímela **dentro de la carpeta `ml/` del proyecto**, de
+modo que quede `ml\modelos\cu2-beto-v1\...`, etc. Después, desde `ml`:
 
 ```powershell
-# Desde la carpeta donde descomprimiste lo de Drive:
-Copy-Item -Recurse ml\modelos\cu2-tfidf-logreg-v1 "C:\ruta\al\proyecto\ai-service\models\cu2-tfidf-logreg-v1"
-Copy-Item -Recurse ml\modelos\cu2-beto-v1 "C:\ruta\al\proyecto\ai-service\models\cu2-beto-v1"
+.\.venv\Scripts\python.exe exportar_a_ai_service.py
 ```
 
-**03 necesita reorganizarse** (el notebook entrena ambas arquitecturas
-juntas en una sola carpeta; `ai-service` quiere una carpeta por cada
-`modelos_ia.codigo`, con el archivo llamado siempre `modelo.pt`):
-
-```powershell
-$destino = "C:\ruta\al\proyecto\ai-service\models"
-
-New-Item -ItemType Directory -Force "$destino\cu1-resnet50-v1" | Out-Null
-Copy-Item ml\modelos\cu1-imagen\resnet50.pt "$destino\cu1-resnet50-v1\modelo.pt"
-Copy-Item ml\modelos\cu1-imagen\metricas_resnet50.json "$destino\cu1-resnet50-v1\metricas.json"
-
-New-Item -ItemType Directory -Force "$destino\cu1-efficientnet-b0-v1" | Out-Null
-Copy-Item ml\modelos\cu1-imagen\efficientnet_b0.pt "$destino\cu1-efficientnet-b0-v1\modelo.pt"
-Copy-Item ml\modelos\cu1-imagen\metricas_efficientnet_b0.json "$destino\cu1-efficientnet-b0-v1\metricas.json"
-```
+Copia cada modelo a `ai-service\models\<codigo>\` con los nombres que
+espera el servicio (no hay que renombrar nada a mano), se niega a
+publicar modelos entrenados con `MODO_RAPIDO=True`, y te imprime los
+`registro_modelo.sql` a correr y el `PESO_FUSION_IMAGEN` recomendado para
+`ai-service\.env`.
 
 No necesitas copiar los 4 modelos a la vez — `ai-service` carga lo que
 encuentre. Si solo entrenaste CU2 por ahora, cópialo igual y el servicio

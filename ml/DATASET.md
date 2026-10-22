@@ -1,57 +1,150 @@
 # Dataset de entrenamiento — fuentes, licencias y limitaciones
 
+Lo arma `ml/preparar_dataset.py` (orquestador) con `ml/fuentes_datos.py`
+(una función por fuente). Cómo correrlo: `docs/ENTRENAMIENTO_LOCAL.md`.
+
+## Por qué hay tres fuentes y no una
+
+La primera versión usaba solo `Shopify/product-catalogue` (split train, 300
+por clase) y quedó en **2 935 productos con 11 de las 21 clases por debajo
+de 100 ejemplos** — algunas con 10-21 (Relojes 10, Peluches 15, Bloques
+18, Balones 21, Fragancias 21). Con 15% para test, esas clases tenían 2-3
+ejemplos de prueba: su F1 pasaba a depender de acertar o fallar uno o dos
+productos, y el F1-macro (que promedia las 21 clases por igual) quedaba
+bajo y muy ruidoso. Contando el dataset COMPLETO (los dos splits, 48 289
+productos) con el mismo mapeo, el techo de Shopify para esas clases sigue
+siendo bajísimo (Relojes 15, Peluches 18, Fragancias 23, Balones 25,
+Bloques 27): no es un problema de tope, el dataset casi no tiene esos
+productos. Por eso se suman fuentes con licencia abierta para las clases
+débiles.
+
 ## Fuentes
 
 ### Principal: Shopify/product-catalogue
 
 - **Dónde:** https://huggingface.co/datasets/Shopify/product-catalogue
 - **Licencia:** Apache-2.0
-- **Tamaño:** 48 289 productos (train: 38 631), ~9.5 GB
-- **Columnas usadas:** `product_title`, `product_description`,
-  `product_image` (binario), `ground_truth_category` (jerárquica,
-  separada por " > ", es la taxonomía pública de Google Product Taxonomy)
-- Confirmado contactando la API pública de `datasets-server` de Hugging
-  Face y leyendo ~2 400 valores reales y únicos de `ground_truth_category`
-  antes de escribir `mapeo_categorias.py` — no es un mapeo adivinado.
+- **Tamaño:** 48 289 productos (train 38 631 + test 9 658), ~9.5 GB
+- **Se usan los dos splits** (antes solo train). Se lee primero solo
+  texto/categoría (lectura parcial de los parquet) y después se bajan
+  solo las imágenes de las filas elegidas.
+- **Columnas:** `product_title`, `product_description`, `product_image`,
+  `ground_truth_category` (Google Product Taxonomy, mapeada con
+  `mapeo_categorias.py`, ver abajo).
 
-### Complemento opcional: Amazon Berkeley Objects (ABO)
+### Complemento: Fashion Product Images (Small)
+
+- **Dónde:** Kaggle `paramaggarwal/fashion-product-images-small`
+  (espejo en Hugging Face: `ashraq/fashion-product-images-small`)
+- **Licencia:** MIT (verificada en la API de Kaggle: `licenseNameNullable: "MIT"`)
+- **Tamaño:** 44 072 productos de moda con `articleType`, `usage` y
+  `productDisplayName` (título corto en inglés, sin descripción).
+- **Mapeo** (`MODA_ARTICLE_TYPE` en `fuentes_datos.py`): Tshirts/Shirts/
+  Tops → Polos y camisas; Jackets/Rain Jacket → Casacas y abrigos; los
+  calzados → Zapatillas y calzado; Watches → Relojes; Perfume and Body
+  Mist/Fragrance Gift Set → Fragancias (desodorantes NO); labiales,
+  esmaltes, delineadores, bases, máscaras, sombras, rubores →
+  Maquillaje; Track Pants/Tracksuits y cualquier prenda con
+  `usage == "Sports"` → Ropa deportiva (así un polo deportivo no cae en
+  "Polos y camisas").
+- **Limitación:** las imágenes son de 60x80 px. Ver "Sesgo por fuente".
+
+### Complemento: Amazon Berkeley Objects (ABO)
 
 - **Dónde:** https://amazon-berkeley-objects.s3.amazonaws.com
 - **Licencia:** CC BY 4.0
-- **Uso:** solo si una categoría queda con menos de 100 ejemplos después
-  de Shopify/product-catalogue, y solo si se corre
-  `preparar_dataset.py --complementar-abo` (desactivado por defecto).
-  Ver `abo_complemento.py` — **la lógica está escrita pero no se corrió
-  de punta a punta en este sandbox** (los archivos de ABO pesan varios
-  GB); revísala con cuidado la primera vez que la actives.
+- **Cómo se usa:** metadatos (`listings/metadata/*.json.gz`, ~90 MB) e
+  imágenes "small" (hasta 256 px) bajadas archivo por archivo — no hace
+  falta el tar de varios GB.
+- **Mapeo por `product_type`** (`ABO_PRODUCT_TYPE`), **revisado contra
+  nombres reales** antes de usarlo:
+  - SHOES/BOOT/SANDAL/TECHNICAL_SPORT_SHOE → Zapatillas y calzado
+  - WATCH → Relojes; maquillaje (LIP_COLOR, EYELID_COLOR, MASCARA, …) →
+    Maquillaje; COSMETIC_BRUSH/HAIR_IRON → Herramientas de belleza;
+    TOY_BUILDING_BLOCK → Bloques de construcción
+  - RECREATION_BALL → Balones **solo si el nombre es de un balón
+    deportivo**: el tipo mezcla balones de fútbol con *medicine balls* y
+    *slam balls* de gimnasio.
+  - TOY_FIGURE/TOYS_AND_GAMES → Peluches **solo si el nombre lo indica**
+    (son casi todos peluches "Jam & Honey", pero no todos).
+  - **Descartados a propósito:** NOTEBOOK_COMPUTER, PERSONAL_COMPUTER y
+    COMPUTER (traen cables, hubs y brazos de monitor, no computadoras) y
+    NON_RIDING_TOY_VEHICLE (traía baterías).
+- **Títulos:** se prefiere el nombre en español (ABO tiene es_MX/es_ES/
+  es_US para parte del catálogo); si no, el inglés; otros idiomas se
+  descartan (el traductor es solo inglés → español).
+- **Duplicados:** el mismo producto aparece en varios mercados y tallas
+  con la MISMA foto; se deduplica por imagen para que copias casi
+  idénticas no caigan a la vez en train y en test.
 
-## El mapeo de categorías (`mapeo_categorias.py`)
+## Selección por clase
 
-Shopify/product-catalogue no tiene las 21 categorías de NovaStore —
-tiene la taxonomía completa de Google Product Taxonomy (miles de clases,
-cola muy larga). `mapeo_categorias.py` mapea por PREFIJO: si
-`ground_truth_category` empieza con uno de los prefijos listados para
-una categoría de NovaStore, el producto se queda con esa categoría; si no
-matchea ningún prefijo, se descarta.
+`preparar_dataset.py` (por defecto):
 
-Cada prefijo está marcado `confirmado=True` o `confirmado=False`:
+1. Deduplica por título+descripción entre todas las fuentes.
+2. Por categoría, toma primero Shopify (hasta 500, muestra con semilla 42
+   si hay más) y completa el cupo con las fuentes complementarias,
+   **cada una con un tope de 300 por clase**, para que ninguna fuente
+   externa domine una clase.
 
-- `confirmado=True`: se vio tal cual en la muestra real de ~2 400
-  categorías únicas que se sacó del dataset antes de escribir el mapeo.
-- `confirmado=False`: no apareció en esa muestra (el dataset completo
-  tiene muchas más categorías únicas que las 2 400 muestreadas), pero es
-  parte de la taxonomía estándar de Google Product Taxonomy, así que es
-  razonable que exista en alguna de las 48 289 filas.
+Resultado de la corrida de referencia (6 534 productos):
 
-Al correr `preparar_dataset.py` contra el dataset completo, revisa el
-reporte de conteo por clase. Si alguna categoría queda floja, el primer
-lugar a mirar es si sus prefijos son todos `confirmado=False` — puede que
-el prefijo real tenga una palabra distinta a la que se infirió acá.
+| Categoría | Shopify | Moda (MIT) | ABO | Total |
+|---|---:|---:|---:|---:|
+| Audio y audífonos | 411 | 0 | 0 | 411 |
+| Laptops y computadoras | 70 | 0 | 0 | **70** |
+| Relojes inteligentes y wearables | 15 | 300 | 20 | 335 |
+| Electrodomésticos de cocina | 425 | 0 | 0 | 425 |
+| Muebles | 500 | 0 | 0 | 500 |
+| Decoración y menaje | 500 | 0 | 0 | 500 |
+| Casacas y abrigos | 112 | 163 | 0 | 275 |
+| Zapatillas y calzado | 63 | 218 | 219 | 500 |
+| Polos y camisas | 59 | 300 | 0 | 359 |
+| Balones | 25 | 0 | 23 | **48** |
+| Ropa deportiva | 112 | 300 | 0 | 412 |
+| Equipos de fitness | 500 | 0 | 0 | 500 |
+| Fragancias | 23 | 300 | 0 | 323 |
+| Maquillaje | 128 | 300 | 41 | 469 |
+| Herramientas de belleza | 234 | 0 | 23 | 257 |
+| Bloques de construcción | 27 | 0 | 5 | **32** |
+| Peluches | 18 | 0 | 41 | **59** |
+| Vehículos de juguete | 45 | 0 | 0 | **45** |
+| Bebidas | 306 | 0 | 0 | 306 |
+| Abarrotes y snacks | 500 | 0 | 0 | 500 |
+| Limpieza del hogar | 208 | 0 | 0 | 208 |
 
-**Hallazgo real durante la validación:** varios prefijos que se habían
-inferido "a ojo" de la taxonomía estándar resultaron tener el nombre
-exacto distinto en este dataset en particular. Ejemplos corregidos tras
-verificar contra datos reales:
+Las clases con menos de 100 ejemplos bajaron de 11 a 5 (en negrita).
+**Siguen débiles** Laptops, Balones, Bloques, Peluches y Vehículos de
+juguete: ninguna de las tres fuentes tiene más de esos productos con
+etiqueta confiable. Se probó relabelear filas de Shopify por palabras
+clave ("plush", "lego", "die-cast", …) y se descartó: las coincidencias
+eran mayormente ruido (camas para mascotas, toallas, accesorios de baño
+"DUPLO", martillos "die-cast").
+
+## Sesgo por fuente (y cómo se controla)
+
+Las fuentes no se ven igual: Moda trae fotos de estudio de 60x80 px;
+ABO, fotos de catálogo de Amazon con fondo blanco; Shopify, fotos reales
+de tiendas. Un modelo podría aprender "foto chica y borrosa = clase de
+moda" en vez de mirar el producto, y eso inflaría las métricas de test
+(que tienen la misma mezcla) sin servir para fotos reales de vendedores.
+Por eso:
+
+- `entrenar_cu1.py` aplica a TODAS las imágenes de entrenamiento una
+  degradación de resolución aleatoria (`BajaResolucionAleatoria`), para
+  que la resolución deje de delatar la fuente.
+- Todos los scripts reportan las métricas **también separadas por
+  fuente** (`por_fuente` en `metricas.json`). La de `shopify` es la más
+  cercana al caso real (fotos de vendedores) y la más comparable con la
+  corrida anterior.
+
+## El mapeo de categorías de Shopify (`mapeo_categorias.py`)
+
+Mapea por PREFIJO de `ground_truth_category` (gana el prefijo más largo).
+Cada prefijo está marcado `confirmado=True` (visto tal cual en el dataset)
+o `confirmado=False` (inferido de la taxonomía pública de Google).
+Varios prefijos inferidos "a ojo" resultaron tener otro nombre exacto en
+este dataset y se corrigieron contra datos reales:
 
 | Categoría NovaStore | Prefijo que se asumió primero | Prefijo real confirmado |
 |---|---|---|
@@ -59,78 +152,41 @@ verificar contra datos reales:
 | Equipos de fitness | `Sporting Goods > Exercise & Fitness` | `Sporting Goods > Fitness & General Exercise Equipment` |
 | Fragancias | `Cosmetics > Perfume & Cologne` | `Cosmetics > Perfumes & Colognes` |
 | Maquillaje | `Cosmetics > Make-Up` (con guion) | `Cosmetics > Makeup` (sin guion) |
-| Herramientas de belleza | `Cosmetics > Make-Up Tools` | `Cosmetics > Cosmetic Tools` (incluye Makeup/Nail/Skin Care Tools) |
-
-Por eso el mapeo se construyó así — adivinar el nombre exacto de un nodo
-de una taxonomía de miles de clases, sin verificar, es una fuente de bugs
-silenciosos (la categoría simplemente queda vacía y nadie se entera hasta
-entrenar con un dataset incompleto).
-
-**Categoría sin confirmar al cierre de este documento:** "Peluches"
-(`Toys & Games > Toys > Stuffed Animals & Plush Toys`, inferido de la
-taxonomía estándar) — no apareció en la muestra de ~2 400 categorías
-únicas. Es muy probable que exista en el dataset completo (es una
-categoría de producto muy común), pero revísala primero si "Peluches"
-queda floja en el reporte.
+| Herramientas de belleza | `Cosmetics > Make-Up Tools` | `Cosmetics > Cosmetic Tools` |
 
 ## Traducción a español (`traducir_a_espanol`)
 
-BETO (CU2) espera texto en español. El dataset tiene productos en varios
-idiomas (se confirmó al menos inglés y sueco en una muestra real). La
-consigna del proyecto fue traducir con `Helsinki-NLP/opus-mt-en-es`
-(inglés → español) todo texto que `langdetect` no identifique como
-español.
+BETO espera texto en español. El texto de entrada es "título.
+descripción" (descripción cortada a 400 caracteres) — el mismo formato
+que arma ai-service al clasificar. Lo que `langdetect` no identifica como
+español (o lo que ABO ya trae en español) se traduce con
+`Helsinki-NLP/opus-mt-en-es` usando búsqueda greedy (2.4x más rápida que
+la de 4 haces y sin pérdida apreciable en las pruebas). Las traducciones
+se guardan en `datos/cache/traducciones.json`: una segunda corrida no
+vuelve a traducir lo mismo.
 
-**Limitación metodológica, confirmada empíricamente:** `opus-mt-en-es`
-traduce inglés → español. Para un texto en un tercer idioma (en la
-prueba, sueco), el modelo no traduce de verdad — en el mejor caso deja el
-texto casi intacto (con capitalización rara), en el peor puede producir
-texto sin sentido. No se implementó detección+filtro de "solo inglés"
-porque descartar todo lo que no sea español o inglés reduciría aún más un
-dataset ya chico; se documenta la limitación en vez de ocultarla. Si el
-reporte de `preparar_dataset.py` muestra una proporción alta de idiomas
-no-ingleses entre lo traducido, vale la pena revisar esos ejemplos a mano
-antes de entrenar CU2, o acotar el dataset a title/description en inglés
-únicamente (hay una señal indirecta: casi todo el dataset viene de
-tiendas Shopify en inglés, así que debería ser una minoría).
+**Limitación metodológica:** el traductor es inglés → español. Un texto
+en un tercer idioma (se vieron títulos en sueco en Shopify) se traduce
+igual y puede quedar de mala calidad. Se documenta en vez de filtrar
+porque filtrar achicaría todavía más las clases débiles.
 
 ## Partición
 
 70 % entrenamiento / 15 % validación / 15 % prueba, estratificada por
-categoría, semilla fija 42 (`particionar()` en `preparar_dataset.py`).
-**Los 4 notebooks de la Fase 2 usan exactamente esta partición** — nunca
-se vuelve a particionar dentro de un notebook — para que las métricas de
-CU1, CU2 y la fusión sean comparables entre sí.
+categoría, semilla 42 (`particionar()`). **Todos los scripts y notebooks
+usan exactamente esta partición** para que CU1, CU2 y la fusión sean
+comparables. Si una clase tiene menos de 10 ejemplos, `particionar()` se
+niega a partir y explica por qué (la corrida anterior había bajado ese
+mínimo a 3, lo que dejaba clases con 1 ejemplo de test).
 
-Si una categoría queda con menos de 10 ejemplos, `particionar()` se
-niega a partir y explica por qué (una partición estratificada en 3 con
-muy pocos ejemplos deja alguna categoría vacía en validación o prueba).
-Esto se encontró y arregló durante el desarrollo: la primera versión
-dejaba que `sklearn.train_test_split` fallara con un traceback críptico
-—y en el camino, un hilo de fondo de la librería `datasets` llegaba a
-tirar un error fatal del intérprete de Python al cerrar el proceso en
-medio de una descarga—; ahora se valida antes y se corta con un mensaje
-claro.
+**Importante:** al cambiar el dataset cambió la partición, así que las
+métricas nuevas no son directamente comparables con las del PR #5. Para
+compararlas de forma justa, `docs/MEJORA_MODELOS_IA.md` reporta también
+el baseline viejo reproducido sobre la partición nueva.
 
 ## Reproducibilidad: versiones fijadas (`requirements.txt`)
 
-`datasets`, `transformers` y `huggingface-hub` tienen compatibilidad
-cruzada frágil entre versiones recientes — se encontró en la práctica
-que instalar `transformers` sin fijar versión (la más nueva disponible)
-**eliminó el pipeline `"translation"` por completo** (removido en
-transformers 5.x) y además generó un conflicto de dependencias con
-`datasets`. `requirements.txt` fija `datasets==3.2.0` +
-`transformers==4.47.1`, confirmado como una combinación que instala y
-funciona sin conflictos. Los notebooks de Colab (Fase 2) instalan
-exactamente estas versiones en su primera celda — no actualices estas
-dos librerías sueltas sin volver a probar el pipeline de traducción.
-
-## Qué falta por correr (no se hizo en este sandbox)
-
-- La corrida completa de `preparar_dataset.py` contra el dataset entero
-  (300 ejemplos/clase, sin `--limite-filas`) — se validó la lógica contra
-  el dataset real pero con una muestra chica (hasta 3 000 filas, 10
-  ejemplos/clase), no la corrida de producción completa. Esa corrida
-  completa se hace en `00_preparar_dataset.ipynb`, en Colab, apuntando a
-  Google Drive.
-- El complemento opcional de ABO (`--complementar-abo`).
+`datasets==3.2.0` + `transformers==4.47.1` están fijados a propósito:
+`transformers` 5.x eliminó el pipeline de traducción y además genera
+conflictos con `datasets`. No actualices estas dos librerías sueltas sin
+volver a probar `preparar_dataset.py`.

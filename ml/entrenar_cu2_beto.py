@@ -1,332 +1,188 @@
-"""
-Script de entrenamiento CU2 - BETO (dccuchile/bert-base-spanish-wwm-cased)
-y evaluacion de Fusion Multimodal (ResNet-50 + BETO) para OE1.
+"""CU2 — fine-tuning de BETO (dccuchile/bert-base-spanish-wwm-cased), cu2-beto-v1.
 
-Uso:
+Por qué la corrida anterior quedó en F1-macro 0.36 (accuracy 0.61) y qué
+cambia acá:
+  - 4 épocas con lr=2e-5 en ~2 000 ejemplos y 21 clases: la cabeza
+    clasificadora (inicializada al azar) no llegaba a aprender las clases
+    chicas -> el modelo casi solo predecía las clases grandes (accuracy
+    "aceptable", F1-macro muy bajo). Ahora: hasta 15 épocas con early
+    stopping (paciencia 3) y la cabeza con una LR 10x mayor que el encoder.
+  - Pérdida con pesos por clase (raíz de la frecuencia inversa) + label
+    smoothing 0.05, por el desbalance entre clases.
+  - weight decay 0.01 (sin bias/LayerNorm), clipping de gradiente 1.0,
+    warmup 10% + decaimiento lineal, AMP (fp16) en GPU.
+  - Clases en el orden de la taxonomía (indice_clase), no alfabético.
+  - Padding dinámico por lote (más rápido que rellenar todo a 128).
+
+Uso (PowerShell, desde la carpeta ml):
     .\\.venv\\Scripts\\python.exe entrenar_cu2_beto.py
+    .\\.venv\\Scripts\\python.exe entrenar_cu2_beto.py --modo-rapido   # prueba de humo
 """
 
-import sys
-import io
-import json
-import random
-from pathlib import Path
+from __future__ import annotations
 
-# Configurar encoding UTF-8 seguro para Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+import argparse
+import time
+from pathlib import Path
 
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    get_linear_schedule_with_warmup,
+from torch.utils.data import DataLoader
+
+from comun import (
+    CARPETA_DATOS, CARPETA_MODELOS, CLASES, LABEL2ID, META_CU2, cargar_particiones, configurar_consola, dispositivo,
+    escribir_sql_registro, fijar_semillas, guardar_curvas, guardar_matriz_confusion, guardar_resultados, metricas,
+    metricas_por_fuente, pesos_por_clase, resumen,
 )
-from PIL import Image
-from torchvision import transforms, models
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
-import pandas as pd
-import matplotlib.pyplot as plt
 
-def main():
-    SEMILLA = 42
-    CARPETA_ML = Path(__file__).resolve().parent
-    CARPETA_DATOS = CARPETA_ML / "datos"
-    CARPETA_MODELO_BETO = CARPETA_ML / "modelos" / "cu2-beto-v1"
-    CARPETA_MODELO_BETO.mkdir(parents=True, exist_ok=True)
-    CARPETA_MODELO_IMAGEN = CARPETA_ML / "modelos" / "cu1-imagen"
+CODIGO = "cu2-beto-v1"
+MODELO_BASE = "dccuchile/bert-base-spanish-wwm-cased"
 
-    random.seed(SEMILLA)
-    np.random.seed(SEMILLA)
-    torch.manual_seed(SEMILLA)
 
-    DISPOSITIVO = "cuda" if torch.cuda.is_available() else "cpu"
-    print("=" * 60)
-    print("ENTRENAMIENTO MODELO 4: CU2 - BETO (Fine-Tuning)")
-    print(f"Dispositivo : {DISPOSITIVO}")
-    if DISPOSITIVO == "cuda":
-        print(f"GPU         : {torch.cuda.get_device_name(0)}")
-        print(f"VRAM        : {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    print("=" * 60)
+def main() -> None:
+    configurar_consola()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--datos", type=Path, default=CARPETA_DATOS)
+    parser.add_argument("--salida", type=Path, default=CARPETA_MODELOS / CODIGO)
+    parser.add_argument("--epocas", type=int, default=15)
+    parser.add_argument("--paciencia", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=3e-5, help="LR del encoder; la cabeza usa 10x.")
+    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--max-length", type=int, default=128)
+    parser.add_argument("--label-smoothing", type=float, default=0.05)
+    parser.add_argument("--modo-rapido", action="store_true", help="Pocas filas y 1 época, solo para probar que corre.")
+    args = parser.parse_args()
 
-    # 1. Cargar datos
-    train = pd.read_csv(CARPETA_DATOS / "train.csv")
-    val   = pd.read_csv(CARPETA_DATOS / "val.csv")
-    test  = pd.read_csv(CARPETA_DATOS / "test.csv")
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
-    CLASES = sorted(train["categoria"].unique())
-    LABEL2ID = {c: i for i, c in enumerate(CLASES)}
-    ID2LABEL = {i: c for c, i in LABEL2ID.items()}
+    fijar_semillas()
+    disp = dispositivo()
+    usar_amp = disp == "cuda"
+    train, val, test = cargar_particiones(args.datos)
+    if args.modo_rapido:
+        train = train.groupby("categoria", group_keys=False).head(4)
+        val = val.groupby("categoria", group_keys=False).head(2)
+        test = test.groupby("categoria", group_keys=False).head(2)
+        args.epocas = 1
+    print(f"[BETO] dispositivo={disp} | train={len(train)} val={len(val)} test={len(test)}")
 
-    print(f"\n[DATOS] train={len(train)} | val={len(val)} | test={len(test)}")
-    print(f"[CLASES] {len(CLASES)} categorias.")
-
-    # 2. Tokenizar
-    MODELO_BASE = "dccuchile/bert-base-spanish-wwm-cased"
-    print(f"\n[INFO] Descargando/cargando tokenizer y pesos de '{MODELO_BASE}'...")
     tokenizer = AutoTokenizer.from_pretrained(MODELO_BASE)
-
-    class DatasetTexto(Dataset):
-        def __init__(self, textos, etiquetas, tok):
-            self.encodings = tok(
-                list(textos),
-                truncation=True,
-                max_length=128,
-                padding=True,
-                return_tensors="pt"
-            )
-            self.etiquetas = list(etiquetas)
-
-        def __len__(self):
-            return len(self.etiquetas)
-
-        def __getitem__(self, idx):
-            item = {k: v[idx] for k, v in self.encodings.items()}
-            item["labels"] = torch.tensor(self.etiquetas[idx], dtype=torch.long)
-            return item
-
-    y_train = train["categoria"].map(LABEL2ID).tolist()
-    y_val   = val["categoria"].map(LABEL2ID).tolist()
-    y_test  = test["categoria"].map(LABEL2ID).tolist()
-
-    BATCH_SIZE = 16
-    train_loader = DataLoader(DatasetTexto(train["texto_es"], y_train, tokenizer), batch_size=BATCH_SIZE, shuffle=True)
-    val_loader   = DataLoader(DatasetTexto(val["texto_es"],   y_val,   tokenizer), batch_size=BATCH_SIZE)
-    test_loader  = DataLoader(DatasetTexto(test["texto_es"],  y_test,  tokenizer), batch_size=BATCH_SIZE)
-
-    # 3. Modelo BETO
     modelo = AutoModelForSequenceClassification.from_pretrained(
         MODELO_BASE,
         num_labels=len(CLASES),
-        id2label=ID2LABEL,
+        id2label={i: c for i, c in enumerate(CLASES)},
         label2id=LABEL2ID,
-    ).to(DISPOSITIVO)
+    ).to(disp)
 
-    # 4. Optimizador y Scheduler
-    EPOCAS = 4
-    LR = 2e-5
-    optimizador = torch.optim.AdamW(modelo.parameters(), lr=LR)
-    total_pasos = len(train_loader) * EPOCAS
-    scheduler = get_linear_schedule_with_warmup(optimizador, num_warmup_steps=int(total_pasos * 0.1), num_training_steps=total_pasos)
+    def cargador(df, barajar: bool) -> DataLoader:
+        ejemplos = list(zip(df["texto_es"].tolist(), df["etiqueta"].tolist()))
 
-    def evaluar_beto(loader):
+        def juntar(lote):
+            textos, etiquetas = zip(*lote)
+            entrada = tokenizer(list(textos), truncation=True, max_length=args.max_length, padding=True, return_tensors="pt")
+            entrada["labels"] = torch.tensor(etiquetas, dtype=torch.long)
+            return entrada
+
+        generador = torch.Generator().manual_seed(42)
+        return DataLoader(ejemplos, batch_size=args.batch, shuffle=barajar, collate_fn=juntar, generator=generador)
+
+    train_loader, val_loader, test_loader = cargador(train, True), cargador(val, False), cargador(test, False)
+
+    sin_decay = ("bias", "LayerNorm.weight")
+    cabeza = [(n, p) for n, p in modelo.named_parameters() if n.startswith("classifier")]
+    encoder = [(n, p) for n, p in modelo.named_parameters() if not n.startswith("classifier")]
+    grupos = [
+        {"params": [p for n, p in encoder if not any(s in n for s in sin_decay)], "weight_decay": 0.01, "lr": args.lr},
+        {"params": [p for n, p in encoder if any(s in n for s in sin_decay)], "weight_decay": 0.0, "lr": args.lr},
+        {"params": [p for _, p in cabeza], "weight_decay": 0.01, "lr": args.lr * 10},
+    ]
+    optimizador = torch.optim.AdamW(grupos)
+    total_pasos = len(train_loader) * args.epocas
+    scheduler = get_linear_schedule_with_warmup(optimizador, int(total_pasos * 0.1), total_pasos)
+    pesos = torch.tensor(pesos_por_clase(train["etiqueta"]), dtype=torch.float32, device=disp)
+    criterio = nn.CrossEntropyLoss(weight=pesos, label_smoothing=args.label_smoothing)
+    escalador = torch.amp.GradScaler("cuda", enabled=usar_amp)
+
+    def evaluar(loader) -> tuple[dict, float, np.ndarray]:
         modelo.eval()
-        y_true, y_pred, perdida_total = [], [], 0.0
+        probs, y_true, perdida = [], [], 0.0
         with torch.no_grad():
             for lote in loader:
-                etiquetas = lote.pop("labels").to(DISPOSITIVO)
-                lote = {k: v.to(DISPOSITIVO) for k, v in lote.items()}
-                salida = modelo(**lote, labels=etiquetas)
-                perdida_total += salida.loss.item() * len(etiquetas)
-                y_pred.extend(salida.logits.argmax(dim=1).cpu().tolist())
+                etiquetas = lote.pop("labels").to(disp)
+                lote = {k: v.to(disp) for k, v in lote.items()}
+                with torch.autocast(device_type="cuda", enabled=usar_amp):
+                    logits = modelo(**lote).logits
+                perdida += nn.functional.cross_entropy(logits.float(), etiquetas, reduction="sum").item()
+                probs.append(torch.softmax(logits.float(), dim=1).cpu())
                 y_true.extend(etiquetas.cpu().tolist())
-        return {
-            "loss": perdida_total / max(len(y_true), 1),
-            "accuracy": float(accuracy_score(y_true, y_pred)),
-            "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
-        }
-
-    print("\n" + "=" * 60)
-    print(">>> Iniciando Fine-Tuning de BETO con Early Stopping...")
-    print("=" * 60)
+        p = torch.cat(probs).numpy()
+        return metricas(y_true, p.argmax(1)), perdida / max(len(y_true), 1), p
 
     historia = {"epoca": [], "train_loss": [], "val_loss": [], "val_accuracy": [], "val_f1_macro": []}
-    mejor_f1, mejor_estado, epocas_sin_mejora = -1.0, None, 0
-    PACIENCIA = 2
-
-    for epoca in range(1, EPOCAS + 1):
+    mejor_f1, mejor_estado, sin_mejora = -1.0, None, 0
+    for epoca in range(1, args.epocas + 1):
         modelo.train()
-        perdida_total = 0.0
+        inicio, perdida_total, n = time.time(), 0.0, 0
         for lote in train_loader:
-            etiquetas = lote.pop("labels").to(DISPOSITIVO)
-            lote = {k: v.to(DISPOSITIVO) for k, v in lote.items()}
-            optimizador.zero_grad()
-            salida = modelo(**lote, labels=etiquetas)
-            salida.loss.backward()
-            optimizador.step()
+            etiquetas = lote.pop("labels").to(disp)
+            lote = {k: v.to(disp) for k, v in lote.items()}
+            optimizador.zero_grad(set_to_none=True)
+            with torch.autocast(device_type="cuda", enabled=usar_amp):
+                perdida = criterio(modelo(**lote).logits.float(), etiquetas)
+            escalador.scale(perdida).backward()
+            escalador.unscale_(optimizador)
+            torch.nn.utils.clip_grad_norm_(modelo.parameters(), 1.0)
+            escalador.step(optimizador)
+            escalador.update()
             scheduler.step()
-            perdida_total += salida.loss.item() * len(etiquetas)
+            perdida_total += perdida.item() * len(etiquetas)
+            n += len(etiquetas)
 
-        m = evaluar_beto(val_loader)
-        historia["epoca"].append(epoca)
-        historia["train_loss"].append(perdida_total / len(train))
-        historia["val_loss"].append(m["loss"])
-        historia["val_accuracy"].append(m["accuracy"])
-        historia["val_f1_macro"].append(m["f1_macro"])
+        m_val, perdida_val, _ = evaluar(val_loader)
+        for clave, valor in (("epoca", epoca), ("train_loss", perdida_total / max(n, 1)), ("val_loss", perdida_val),
+                             ("val_accuracy", m_val["accuracy"]), ("val_f1_macro", m_val["f1_macro"])):
+            historia[clave].append(valor)
+        print(f"  época {epoca}/{args.epocas} | train_loss={historia['train_loss'][-1]:.4f} | val_loss={perdida_val:.4f} "
+              f"| val_acc={m_val['accuracy']:.4f} | val_f1={m_val['f1_macro']:.4f} | {time.time() - inicio:.0f}s", flush=True)
 
-        print(f"  [BETO] Epoca {epoca}/{EPOCAS} | train_loss={historia['train_loss'][-1]:.4f} | val_acc={m['accuracy']:.4f} | val_f1={m['f1_macro']:.4f}")
-
-        if m["f1_macro"] > mejor_f1 or mejor_estado is None:
-            mejor_f1 = m["f1_macro"]
-            mejor_estado = {k: v.cpu().clone() for k, v in modelo.state_dict().items()}
-            epocas_sin_mejora = 0
-            print(f"    -> [CHECKPOINT] Mejor F1-macro de validacion: {mejor_f1:.4f}")
+        if m_val["f1_macro"] > mejor_f1:
+            mejor_f1, sin_mejora = m_val["f1_macro"], 0
+            mejor_estado = {k: v.detach().cpu().clone() for k, v in modelo.state_dict().items()}
         else:
-            epocas_sin_mejora += 1
-            if epocas_sin_mejora >= PACIENCIA:
-                print(f"    [EARLY STOPPING] Parada temprana en epoca {epoca}")
+            sin_mejora += 1
+            if sin_mejora >= args.paciencia:
+                print(f"  [early stopping] sin mejora en {args.paciencia} épocas")
                 break
 
     modelo.load_state_dict(mejor_estado)
-    print(f"\n[OK] Modelo restaurado al mejor checkpoint (Val F1={mejor_f1:.4f})")
+    m_test, _, probs_test = evaluar(test_loader)
+    _, _, probs_val = evaluar(val_loader)
+    y_pred = probs_test.argmax(1)
+    por_fuente = metricas_por_fuente(test, y_pred)
+    print("\n" + resumen("BETO (test)", m_test, META_CU2))
+    for fuente, valores in por_fuente.items():
+        print(f"  {fuente:12} n={valores['n']:4} acc={valores['accuracy']:.4f} f1(clases presentes)={valores['f1_macro_clases_presentes']:.4f}")
 
-    # 5. Evaluacion sobre conjunto de prueba (TEST)
-    print("\n" + "=" * 60)
-    print(">>> Evaluando BETO sobre conjunto de PRUEBA (TEST)...")
-    print("=" * 60)
-    modelo.eval()
-    y_true, y_pred = [], []
-    with torch.no_grad():
-        for lote in test_loader:
-            etiquetas = lote.pop("labels")
-            lote = {k: v.to(DISPOSITIVO) for k, v in lote.items()}
-            logits = modelo(**lote).logits
-            y_pred.extend(logits.argmax(dim=1).cpu().tolist())
-            y_true.extend(etiquetas.tolist())
+    salida = args.salida
+    salida.mkdir(parents=True, exist_ok=True)
+    tokenizer.model_max_length = args.max_length  # ai-service trunca con este mismo valor
+    modelo.save_pretrained(salida)
+    tokenizer.save_pretrained(salida)
+    np.save(salida / "probs_val.npy", probs_val)
+    np.save(salida / "probs_test.npy", probs_test)
+    hiper = {"lr_encoder": args.lr, "lr_cabeza": args.lr * 10, "batch": args.batch, "max_length": args.max_length,
+             "epocas_max": args.epocas, "epocas_corridas": len(historia["epoca"]), "paciencia": args.paciencia,
+             "label_smoothing": args.label_smoothing, "pesos_clase": "raiz frecuencia inversa", "weight_decay": 0.01}
+    guardar_resultados(salida, m_test, {"por_fuente": por_fuente, "hiperparametros": hiper, "val_f1_macro": mejor_f1,
+                                        "modo_rapido": args.modo_rapido})
+    guardar_matriz_confusion(test["etiqueta"], y_pred, salida / "matriz_confusion.png")
+    guardar_curvas(historia, salida / "curvas_entrenamiento.png", "BETO")
+    sql = escribir_sql_registro(salida, CODIGO, m_test, hiper, f"{CODIGO}/")
+    if args.modo_rapido:
+        print("\n[MODO RÁPIDO] Estas métricas NO son válidas: solo confirman que el script corre.")
+    print(f"[OK] Modelo, métricas y {sql.name} en {salida}")
 
-    metricas_beto = {
-        "accuracy": float(accuracy_score(y_true, y_pred)),
-        "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
-        "f1_weighted": float(f1_score(y_true, y_pred, average="weighted", zero_division=0)),
-        "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
-        "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
-    }
-    print("Metricas BETO en Test:")
-    for k, v in metricas_beto.items():
-        print(f"  {k:15}: {v:.4f}")
-
-    # 6. Guardar modelo BETO
-    print("\n[GUARDAR] Guardando modelo BETO y tokenizer...")
-    modelo.save_pretrained(CARPETA_MODELO_BETO)
-    tokenizer.save_pretrained(CARPETA_MODELO_BETO)
-    with open(CARPETA_MODELO_BETO / "metricas.json", "w", encoding="utf-8") as f:
-        json.dump(metricas_beto, f, indent=2, ensure_ascii=False)
-    print(f"  [OK] Guardado en {CARPETA_MODELO_BETO}")
-
-    # Guardar curvas
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    ax1.plot(historia["epoca"], historia["train_loss"], label="train")
-    ax1.plot(historia["epoca"], historia["val_loss"], label="val")
-    ax1.set_title("Perdida"); ax1.set_xlabel("Epoca"); ax1.legend()
-    ax2.plot(historia["epoca"], historia["val_accuracy"], label="val accuracy")
-    ax2.plot(historia["epoca"], historia["val_f1_macro"], label="val F1-macro")
-    ax2.set_title("Validacion"); ax2.set_xlabel("Epoca"); ax2.legend()
-    plt.tight_layout()
-    plt.savefig(CARPETA_MODELO_BETO / "curvas_entrenamiento.png", dpi=120)
-
-    # 7. Generar SQL para BETO
-    sql_beto = f"""UPDATE novastore.modelos_ia
-   SET metricas = '{json.dumps(metricas_beto)}'::jsonb,
-       hiperparametros = COALESCE(hiperparametros, '{{}}'::jsonb) || '{{"lr": {LR}, "epocas_corridas": {len(historia["epoca"])}, "max_length": 128}}'::jsonb,
-       estado = 'evaluado',
-       entrenado_en = now(),
-       ruta_artefacto = 'cu2-beto-v1/'
- WHERE codigo = 'cu2-beto-v1';
-"""
-    (CARPETA_MODELO_BETO / "registro_modelo.sql").write_text(sql_beto, encoding="utf-8")
-    print(f"  [OK] SQL de registro generado en {CARPETA_MODELO_BETO / 'registro_modelo.sql'}")
-
-    # 8. FUSION MULTIMODAL (ResNet-50 + BETO)
-    print("\n" + "=" * 60)
-    print(">>> 9. EVALUANDO FUSION MULTIMODAL (ResNet-50 [Imagen] + BETO [Texto])...")
-    print("=" * 60)
-
-    ruta_resnet = CARPETA_MODELO_IMAGEN / "resnet50.pt"
-    if not ruta_resnet.exists():
-        print(f"[AVISO] No se encontro {ruta_resnet}. Saltando evaluacion de fusion.")
-        return
-
-    # Cargar ResNet-50
-    checkpoint = torch.load(ruta_resnet, map_location=DISPOSITIVO, weights_only=False)
-    modelo_resnet = models.resnet50()
-    modelo_resnet.fc = nn.Linear(modelo_resnet.fc.in_features, len(CLASES))
-    modelo_resnet.load_state_dict(checkpoint["modelo"])
-    modelo_resnet = modelo_resnet.to(DISPOSITIVO).eval()
-
-    TRANSFORM_EVAL = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    def get_probs_imagen(df_subset):
-        todas = []
-        with torch.no_grad():
-            for ruta in df_subset["ruta_imagen"]:
-                img = Image.open(ruta).convert("RGB")
-                entrada = TRANSFORM_EVAL(img).unsqueeze(0).to(DISPOSITIVO)
-                logits = modelo_resnet(entrada)
-                probs = torch.softmax(logits, dim=1).squeeze(0).cpu()
-                todas.append(probs)
-        return torch.stack(todas)
-
-    def get_probs_texto(df_subset):
-        todas = []
-        with torch.no_grad():
-            for texto in df_subset["texto_es"]:
-                entrada = tokenizer(texto, return_tensors="pt", truncation=True, max_length=128).to(DISPOSITIVO)
-                logits = modelo(**entrada).logits
-                probs = torch.softmax(logits, dim=1).squeeze(0).cpu()
-                todas.append(probs)
-        return torch.stack(todas)
-
-    print("Calculando probabilidades en conjunto de VALIDACION...")
-    probs_img_val = get_probs_imagen(val)
-    probs_txt_val = get_probs_texto(val)
-    y_val_idx = val["categoria"].map(LABEL2ID).tolist()
-
-    # Buscar el mejor peso de combinacion en VALIDACION (no en test)
-    mejor_peso, mejor_f1_val = 0.5, -1.0
-    for peso in [i / 10.0 for i in range(0, 11)]:
-        comb = peso * probs_img_val + (1.0 - peso) * probs_txt_val
-        pred = comb.argmax(dim=1).tolist()
-        f1 = f1_score(y_val_idx, pred, average="macro", zero_division=0)
-        if f1 > mejor_f1_val:
-            mejor_f1_val = f1
-            mejor_peso = peso
-    print(f"Mejor peso de Imagen elegido en Validacion: {mejor_peso:.1f} (Peso de Texto: {1.0 - mejor_peso:.1f})")
-
-    # Evaluar en conjunto de PRUEBA (TEST) con el mejor peso
-    print("\nEvaluando FUSION en conjunto de PRUEBA (TEST)...")
-    probs_img_test = get_probs_imagen(test)
-    probs_txt_test = get_probs_texto(test)
-    y_test_idx = test["categoria"].map(LABEL2ID).tolist()
-
-    comb_test = mejor_peso * probs_img_test + (1.0 - mejor_peso) * probs_txt_test
-    pred_test = comb_test.argmax(dim=1).tolist()
-
-    fusion_acc = float(accuracy_score(y_test_idx, pred_test))
-    fusion_f1  = float(f1_score(y_test_idx, pred_test, average="macro", zero_division=0))
-
-    metricas_fusion = {
-        "peso_imagen": mejor_peso,
-        "peso_texto": 1.0 - mejor_peso,
-        "accuracy": fusion_acc,
-        "f1_macro": fusion_f1,
-    }
-    with open(CARPETA_MODELO_IMAGEN / "metricas_fusion.json", "w", encoding="utf-8") as f:
-        json.dump(metricas_fusion, f, indent=2)
-
-    # Comparativa Final
-    cumple_oe1 = (fusion_acc >= 0.80 and fusion_f1 >= 0.75)
-    cumple_oe2 = (metricas_beto["f1_macro"] >= 0.85)
-
-    print("\n" + "=" * 60)
-    print("COMPARATIVA GLOBAL Y EVALUACION DE METAS")
-    print("=" * 60)
-    print(f"1. ResNet-50 solo (Imagen)       : Accuracy = 66.21% | F1-macro = 64.19%")
-    print(f"2. BETO solo (Texto)             : Accuracy = {metricas_beto['accuracy']*100:.2f}% | F1-macro = {metricas_beto['f1_macro']*100:.2f}%")
-    print(f"3. FUSION MULTIMODAL (Img + Txt) : Accuracy = {fusion_acc*100:.2f}% | F1-macro = {fusion_f1*100:.2f}%")
-    print("-" * 60)
-    print(f"Meta OE1 (Accuracy >= 80% y F1 >= 0.75): {'[CUMPLIDA]' if cumple_oe1 else '[NO ALCANZADA]'}")
-    print(f"Meta OE2 (F1-macro BETO >= 0.85)       : {'[CUMPLIDA]' if cumple_oe2 else '[NO ALCANZADA]'}")
-    print("=" * 60)
 
 if __name__ == "__main__":
     main()

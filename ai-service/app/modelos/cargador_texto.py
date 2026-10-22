@@ -10,7 +10,16 @@ from dataclasses import dataclass
 
 import torch
 
-from app.esquemas import TopK
+from app.modelos.distribucion import a_taxonomia, resumir, validar_clases
+
+MAX_LENGTH_POR_DEFECTO = 128
+
+
+def texto_entrada(titulo: str, descripcion: str = "") -> str:
+    """Mismo formato que arma ml/preparar_dataset.py para entrenar
+    ("título. descripción", descripción cortada a 400 caracteres)."""
+    descripcion = (descripcion or "").strip()[:400]
+    return f"{titulo.strip()}. {descripcion}".strip() if descripcion else titulo.strip()
 
 
 @dataclass
@@ -19,6 +28,7 @@ class ModeloTextoBeto:
     tokenizer: object
     modelo: object
     clases: list[str]  # modelo.config.id2label en orden de índice
+    max_length: int = MAX_LENGTH_POR_DEFECTO
 
 
 def cargar_beto(ruta_carpeta, codigo: str) -> ModeloTextoBeto:
@@ -28,26 +38,26 @@ def cargar_beto(ruta_carpeta, codigo: str) -> ModeloTextoBeto:
     modelo = AutoModelForSequenceClassification.from_pretrained(ruta_carpeta)
     modelo.eval()
     clases = [modelo.config.id2label[i] for i in range(len(modelo.config.id2label))]
-    return ModeloTextoBeto(codigo=codigo, tokenizer=tokenizer, modelo=modelo, clases=clases)
+    validar_clases(clases, f"{codigo} ({ruta_carpeta})")
+    # El script de entrenamiento guarda en el tokenizer el max_length con
+    # el que entrenó; si no está (o es el "infinito" por defecto), 128.
+    max_length = getattr(tokenizer, "model_max_length", MAX_LENGTH_POR_DEFECTO)
+    if not isinstance(max_length, int) or max_length > 512:
+        max_length = MAX_LENGTH_POR_DEFECTO
+    return ModeloTextoBeto(codigo=codigo, tokenizer=tokenizer, modelo=modelo, clases=clases, max_length=max_length)
+
+
+def distribucion_beto(modelo_texto: ModeloTextoBeto, titulo: str, descripcion: str = "") -> list[float]:
+    entrada = modelo_texto.tokenizer(
+        texto_entrada(titulo, descripcion), return_tensors="pt", truncation=True, max_length=modelo_texto.max_length
+    )
+    with torch.no_grad():
+        probabilidades = torch.softmax(modelo_texto.modelo(**entrada).logits, dim=1).squeeze(0).tolist()
+    return a_taxonomia(probabilidades, modelo_texto.clases)
 
 
 def clasificar_beto(modelo_texto: ModeloTextoBeto, titulo: str, descripcion: str = "", k: int = 5):
-    texto = f"{titulo}. {descripcion}".strip()
-    entrada = modelo_texto.tokenizer(texto, return_tensors="pt", truncation=True, max_length=128, padding=True)
-    with torch.no_grad():
-        logits = modelo_texto.modelo(**entrada).logits
-        probabilidades = torch.softmax(logits, dim=1).squeeze(0)
-
-    indice = int(torch.argmax(probabilidades).item())
-    categoria = modelo_texto.clases[indice]
-    confianza = float(probabilidades[indice].item())
-
-    top_valores, top_indices = torch.topk(probabilidades, k=min(k, len(modelo_texto.clases)))
-    top_k = [
-        TopK(indice_clase=int(i), categoria=modelo_texto.clases[int(i)], prob=float(v))
-        for v, i in zip(top_valores.tolist(), top_indices.tolist())
-    ]
-    return indice, categoria, confianza, top_k
+    return resumir(distribucion_beto(modelo_texto, titulo, descripcion), k)
 
 
 def embedding_beto(modelo_texto: ModeloTextoBeto, titulo: str, descripcion: str = "") -> list[float]:
@@ -55,8 +65,9 @@ def embedding_beto(modelo_texto: ModeloTextoBeto, titulo: str, descripcion: str 
     que exporta el notebook de entrenamiento, para que los embeddings
     sean comparables entre lo que se guardó en producto_embeddings al
     entrenar (si se hizo) y lo que genera este servicio en producción."""
-    texto = f"{titulo}. {descripcion}".strip()
-    entrada = modelo_texto.tokenizer(texto, return_tensors="pt", truncation=True, max_length=128, padding=True)
+    entrada = modelo_texto.tokenizer(
+        texto_entrada(titulo, descripcion), return_tensors="pt", truncation=True, max_length=modelo_texto.max_length
+    )
     with torch.no_grad():
         salida = modelo_texto.modelo.base_model(**entrada)
         mascara = entrada["attention_mask"].unsqueeze(-1).float()
@@ -75,18 +86,17 @@ class ModeloTextoTfidf:
 def cargar_tfidf(ruta_pipeline, codigo: str) -> ModeloTextoTfidf:
     import joblib
 
-    return ModeloTextoTfidf(codigo=codigo, pipeline=joblib.load(ruta_pipeline))
+    pipeline = joblib.load(ruta_pipeline)
+    validar_clases([str(c) for c in pipeline.classes_], f"{codigo} ({ruta_pipeline})")
+    return ModeloTextoTfidf(codigo=codigo, pipeline=pipeline)
+
+
+def distribucion_tfidf(modelo_texto: ModeloTextoTfidf, titulo: str, descripcion: str = "") -> list[float]:
+    # classes_ de sklearn viene en orden alfabético: a_taxonomia lo
+    # reordena por nombre al orden de indice_clase.
+    probabilidades = modelo_texto.pipeline.predict_proba([texto_entrada(titulo, descripcion)])[0]
+    return a_taxonomia(probabilidades.tolist(), [str(c) for c in modelo_texto.pipeline.classes_])
 
 
 def clasificar_tfidf(modelo_texto: ModeloTextoTfidf, titulo: str, descripcion: str = "", k: int = 5):
-    texto = f"{titulo}. {descripcion}".strip()
-    clases = list(modelo_texto.pipeline.classes_)
-    probabilidades = modelo_texto.pipeline.predict_proba([texto])[0]
-
-    indice = int(probabilidades.argmax())
-    categoria = clases[indice]
-    confianza = float(probabilidades[indice])
-
-    orden = probabilidades.argsort()[::-1][:k]
-    top_k = [TopK(indice_clase=int(i), categoria=clases[int(i)], prob=float(probabilidades[i])) for i in orden]
-    return indice, categoria, confianza, top_k
+    return resumir(distribucion_tfidf(modelo_texto, titulo, descripcion), k)

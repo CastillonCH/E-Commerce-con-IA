@@ -1,293 +1,225 @@
-"""Prepara el dataset de entrenamiento para CU1/CU2 a partir de
-`Shopify/product-catalogue` (Hugging Face, Apache-2.0, ~48 300 productos).
+"""Prepara el dataset de entrenamiento para CU1/CU2.
 
-Reutilizable desde los notebooks (`import preparar_dataset`) y ejecutable
-solo (`python ml/preparar_dataset.py`). Ver ml/DATASET.md para las
-fuentes, licencias y limitaciones completas.
+Reutilizable desde los notebooks y los scripts de entrenamiento
+(`import preparar_dataset`) y ejecutable solo:
+
+    python ml/preparar_dataset.py                 # dataset completo recomendado
+    python ml/preparar_dataset.py --solo-shopify  # como antes (solo Shopify)
 
 Qué hace, en orden:
-  1. Recorre el dataset (streaming, no descarga los 9.5 GB de golpe).
-  2. Mapea `ground_truth_category` a una de las 21 categorías de NovaStore
-     (mapeo_categorias.py) — descarta lo que no mapea.
-  3. Descarta filas sin imagen o sin título, y duplicados exactos
-     (mismo título+descripción).
-  4. Corta cada clase en --max-por-clase ejemplos (300 por defecto).
-  5. Guarda las imágenes a disco y reporta cuántos ejemplos quedaron por
-     clase, avisando de las que tengan menos de 100.
-  6. Si se pide (--complementar-abo, desactivado por defecto), intenta
-     sumar ejemplos de Amazon Berkeley Objects para las clases débiles.
-  7. Parte en train/val/test (70/15/15, estratificado, semilla 42) y
-     guarda los tres CSV.
+  1. Lee los candidatos de cada fuente SOLO como texto (sin imágenes):
+     Shopify/product-catalogue (sus dos splits), y como complemento para
+     las clases débiles Fashion Product Images (MIT) y Amazon Berkeley
+     Objects (CC BY 4.0). Ver ml/fuentes_datos.py y ml/DATASET.md.
+  2. Deduplica (mismo título+descripción) entre todas las fuentes.
+  3. Elige hasta --max-por-clase ejemplos por categoría con semilla fija:
+     primero Shopify (el dominio original), y completa con las otras
+     fuentes, cada una con su propio tope (--max-extra-por-clase) para
+     que ninguna fuente externa domine una clase.
+  4. Baja y guarda solo las imágenes de las filas elegidas.
+  5. Traduce al español lo que no esté en español (Helsinki-NLP/opus-mt-en-es,
+     con caché en disco para no volver a traducir en la siguiente corrida).
+  6. Parte en train/val/test (70/15/15, estratificado, semilla 42) y guarda
+     los tres CSV + un reporte de conteos por clase y por fuente.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
+import json
 import sys
-from collections import Counter
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mapeo_categorias import CATEGORIAS, INDICE_CLASE, mapear_categoria  # noqa: E402
+from mapeo_categorias import CATEGORIAS, INDICE_CLASE  # noqa: E402
 
 UMBRAL_CLASE_DEBIL = 100
 SEMILLA = 42
+FUENTES_POR_DEFECTO = ("shopify", "moda_kaggle", "abo")
+PRIORIDAD_FUENTE = {"shopify": 0, "abo": 1, "moda_kaggle": 2}
 
 
-def _normalizar_para_dedupe(titulo: str, descripcion: str) -> str:
-    return f"{titulo.strip().lower()}||{(descripcion or '').strip().lower()}"
+def _clave_dedupe(titulo: str, descripcion: str) -> str:
+    return " ".join(f"{titulo}||{descripcion}".lower().split())
 
 
-def _guardar_imagen(imagen, carpeta: Path, id_fila: int) -> str | None:
-    """`imagen` es lo que trae la columna `product_image` del dataset de
-    HF: un dict con bytes PIL-decodificables, o ya un objeto PIL.Image.
-    Devuelve la ruta relativa guardada, o None si la imagen vino corrupta
-    (pasa con un puñado de filas en datasets grandes scrapeados — se
-    descartan en vez de romper la corrida completa)."""
-    from PIL import Image
-    import io
+def recolectar_candidatos(fuentes: tuple[str, ...], limite_filas: int | None, carpeta_cache: Path) -> pd.DataFrame:
+    from fuentes_datos import CANDIDATOS
 
-    try:
-        if isinstance(imagen, dict) and "bytes" in imagen and imagen["bytes"]:
-            img = Image.open(io.BytesIO(imagen["bytes"]))
-        elif hasattr(imagen, "convert"):
-            img = imagen
+    partes = []
+    for fuente in fuentes:
+        print(f"\n[{fuente}] leyendo candidatos (solo texto)...", flush=True)
+        if fuente == "shopify":
+            df = CANDIDATOS[fuente](limite_filas=limite_filas)
         else:
-            return None
-        img = img.convert("RGB")
-    except Exception:
-        return None
+            df = CANDIDATOS[fuente](carpeta_cache / fuente)
+        print(f"[{fuente}] {len(df)} candidatos mapeados a alguna de las 21 categorías.")
+        partes.append(df)
+    df = pd.concat(partes, ignore_index=True)
+    df["clave"] = [_clave_dedupe(t, d) for t, d in zip(df["titulo"], df["descripcion"])]
+    df["prioridad"] = df["fuente"].map(PRIORIDAD_FUENTE)
+    df = df.sort_values(["prioridad", "ref"]).drop_duplicates("clave").drop(columns="prioridad")
+    return df.reset_index(drop=True)
 
-    carpeta.mkdir(parents=True, exist_ok=True)
-    nombre = f"{id_fila}.jpg"
-    img.save(carpeta / nombre, "JPEG", quality=90)
-    return nombre
 
-
-def construir_dataset(
-    max_por_clase: int = 300,
-    limite_filas: int | None = None,
-    carpeta_salida: Path = Path("ml/datos"),
-    mostrar_progreso: bool = True,
-) -> pd.DataFrame:
-    """Recorre Shopify/product-catalogue en modo streaming, filtra/mapea,
-    guarda imágenes en carpeta_salida/imagenes/ y devuelve un DataFrame
-    con id, titulo, descripcion, ruta_imagen, categoria, indice_clase."""
-    from datasets import load_dataset
-
-    carpeta_imagenes = carpeta_salida / "imagenes"
-    ds = load_dataset("Shopify/product-catalogue", split="train", streaming=True)
-
-    vistos: set[str] = set()
-    conteo_por_clase: Counter[str] = Counter()
-    filas: list[dict] = []
-    id_siguiente = 0
-    descartadas_imagen_corrupta = 0
-
-    for i, fila in enumerate(ds):
-        if limite_filas is not None and i >= limite_filas:
-            break
-
-        titulo = (fila.get("product_title") or "").strip()
-        descripcion = (fila.get("product_description") or "").strip()
-        categoria_cruda = fila.get("ground_truth_category") or ""
-        imagen_cruda = fila.get("product_image")
-
-        if not titulo or imagen_cruda is None:
-            continue
-        categoria = mapear_categoria(categoria_cruda)
-        if categoria is None:
-            continue
-        if conteo_por_clase[categoria] >= max_por_clase:
-            continue
-        clave = _normalizar_para_dedupe(titulo, descripcion)
-        if clave in vistos:
-            continue
-
-        ruta_imagen = _guardar_imagen(imagen_cruda, carpeta_imagenes, id_siguiente)
-        if ruta_imagen is None:
-            descartadas_imagen_corrupta += 1
-            continue
-
-        vistos.add(clave)
-        conteo_por_clase[categoria] += 1
-        filas.append(
-            {
-                "id": id_siguiente,
-                "titulo": titulo,
-                "descripcion": descripcion,
-                "ruta_imagen": str((carpeta_imagenes / ruta_imagen)),
-                "categoria": categoria,
-                "indice_clase": INDICE_CLASE[categoria],
-            }
-        )
-        id_siguiente += 1
-
-        if mostrar_progreso and id_siguiente % 500 == 0:
-            print(f"  ...{id_siguiente} ejemplos guardados ({i + 1} filas revisadas)")
-
-        if all(conteo_por_clase[c] >= max_por_clase for c in CATEGORIAS):
-            break
-
-    del ds  # suelta el iterador en streaming antes de que el proceso termine
-
-    df = pd.DataFrame(filas)
-    _reportar_conteo(conteo_por_clase, descartadas_imagen_corrupta)
+def seleccionar(candidatos: pd.DataFrame, max_por_clase: int, max_extra_por_clase: int, semilla: int = SEMILLA) -> pd.DataFrame:
+    """Por categoría: Shopify primero (muestra aleatoria con semilla si
+    sobra), y el cupo restante se reparte por turnos entre las fuentes
+    externas, cada una con tope `max_extra_por_clase`."""
+    elegidas = []
+    for categoria in CATEGORIAS:
+        de_clase = candidatos[candidatos["categoria"] == categoria]
+        por_fuente = {
+            fuente: grupo.sample(frac=1.0, random_state=semilla)
+            for fuente, grupo in de_clase.groupby("fuente")
+        }
+        tomadas = []
+        shopify = por_fuente.pop("shopify", de_clase.iloc[0:0])
+        tomadas.append(shopify.head(max_por_clase))
+        cupo = max_por_clase - len(tomadas[0])
+        usados = {f: 0 for f in por_fuente}
+        while cupo > 0:
+            avanzo = False
+            for fuente in sorted(por_fuente, key=PRIORIDAD_FUENTE.get):
+                if cupo == 0:
+                    break
+                if usados[fuente] < min(max_extra_por_clase, len(por_fuente[fuente])):
+                    usados[fuente] += 1
+                    cupo -= 1
+                    avanzo = True
+            if not avanzo:
+                break
+        for fuente, n in usados.items():
+            tomadas.append(por_fuente[fuente].head(n))
+        elegidas.append(pd.concat(tomadas))
+    df = pd.concat(elegidas, ignore_index=True)
+    df["id"] = range(len(df))
+    df["id_imagen"] = df["id"]
     return df
 
 
-def _reportar_conteo(conteo_por_clase: Counter[str], descartadas_imagen_corrupta: int) -> None:
-    print(f"\nTotal: {sum(conteo_por_clase.values())} ejemplos ({descartadas_imagen_corrupta} imágenes corruptas descartadas).")
-    print("Por categoría:")
-    debiles = []
-    for categoria in CATEGORIAS:
-        n = conteo_por_clase.get(categoria, 0)
-        marca = ""
-        if n < UMBRAL_CLASE_DEBIL:
-            marca = "  <-- DÉBIL (menos de 100)"
-            debiles.append(categoria)
-        print(f"  [{INDICE_CLASE[categoria]:>2}] {categoria:<35} {n:>4}{marca}")
+def guardar_imagenes(df: pd.DataFrame, carpeta_imagenes: Path) -> pd.DataFrame:
+    from fuentes_datos import GUARDAR_IMAGENES
 
-    if debiles:
-        print(
-            f"\nAviso: {len(debiles)} categoría(s) con menos de {UMBRAL_CLASE_DEBIL} ejemplos: {debiles}."
-            "\nRevisa ml/mapeo_categorias.py para esas clases (puede faltar un prefijo real del"
-            " dataset), o corre con --complementar-abo para sumar ejemplos de Amazon Berkeley Objects."
-        )
+    rutas: dict[str, str] = {}
+    for fuente, grupo in df.groupby("fuente"):
+        print(f"\n[{fuente}] descargando {len(grupo)} imágenes...", flush=True)
+        rutas.update(GUARDAR_IMAGENES[fuente](grupo, carpeta_imagenes))
+    df = df.assign(ruta_imagen=df["ref"].map(rutas))
+    perdidas = df["ruta_imagen"].isna().sum()
+    if perdidas:
+        print(f"\n{perdidas} filas descartadas por imagen faltante o corrupta.")
+    return df[df["ruta_imagen"].notna()].reset_index(drop=True)
 
 
-def complementar_con_abo(
-    df: pd.DataFrame, max_adicional_por_clase: int = 200, carpeta_salida: Path = Path("ml/datos")
+def construir_dataset(
+    max_por_clase: int = 500,
+    limite_filas: int | None = None,
+    carpeta_salida: Path = Path("ml/datos"),
+    mostrar_progreso: bool = True,
+    fuentes: tuple[str, ...] | None = None,
+    max_extra_por_clase: int = 300,
 ) -> pd.DataFrame:
-    """Complemento OPCIONAL (desactivado por defecto) para clases débiles,
-    usando Amazon Berkeley Objects (CC BY 4.0): abo-listings (metadatos,
-    item_name en locale es_US cuando existe) + abo-images-small.
+    """Devuelve un DataFrame con id, fuente, titulo, descripcion,
+    ruta_imagen, categoria, indice_clase (y las imágenes ya en disco).
 
-    ABO no comparte taxonomía con Shopify/product-catalogue — no hay un
-    mapeo de prefijos limpio como con GPT. Por eso este complemento usa
-    una lista de palabras clave en `product_type` (el código de categoría
-    de ABO, p. ej. "SHOES", "CHAIR") revisada a mano para las categorías
-    de NovaStore más propensas a quedar débiles. No pretende ser
-    exhaustivo: es un parche dirigido, no un segundo mapeo completo.
-    """
-    conteo_actual = df["categoria"].value_counts().to_dict()
-    debiles = [c for c in CATEGORIAS if conteo_actual.get(c, 0) < UMBRAL_CLASE_DEBIL]
-    if not debiles:
-        print("Ninguna clase está débil — no hace falta complementar con ABO.")
-        return df
-
-    # product_type (ABO) -> categoría NovaStore. Palabras clave revisadas
-    # a mano contra una muestra de abo-listings; revisable igual que
-    # mapeo_categorias.py.
-    ABO_PRODUCT_TYPE_A_CATEGORIA: dict[str, str] = {
-        "SHOES": "Zapatillas y calzado",
-        "CHAIR": "Muebles",
-        "SOFA": "Muebles",
-        "TABLE": "Muebles",
-        "BED": "Muebles",
-        "HOME_FURNITURE_AND_DECOR": "Decoración y menaje",
-        "CELLULAR_PHONE_CASE": None,  # explícitamente no mapea a nada de NovaStore
-        "SOUNDBAR": "Audio y audífonos",
-        "HEADPHONES": "Audio y audífonos",
-        "WATCH": "Relojes inteligentes y wearables",
-        "OUTERWEAR": "Casacas y abrigos",
-        "SHIRT": "Polos y camisas",
-        "KITCHEN": "Electrodomésticos de cocina",
-    }
-
-    print(
-        f"Complementando {len(debiles)} clase(s) débil(es) con ABO: {debiles}\n"
-        "(requiere descargar abo-listings.tar y abo-images-small.tar de "
-        "https://amazon-berkeley-objects.s3.amazonaws.com — varios GB, puede tardar)."
-    )
-
-    try:
-        from ml.abo_complemento import cargar_candidatos_abo
-    except ImportError:
-        from abo_complemento import cargar_candidatos_abo  # type: ignore[no-redef]
-
-    filas_nuevas = []
-    id_siguiente = int(df["id"].max()) + 1 if len(df) else 0
-    for categoria in debiles:
-        faltan = UMBRAL_CLASE_DEBIL - conteo_actual.get(categoria, 0)
-        objetivo = min(faltan + max_adicional_por_clase, max_adicional_por_clase)
-        candidatos = cargar_candidatos_abo(categoria, ABO_PRODUCT_TYPE_A_CATEGORIA, limite=objetivo)
-        for candidato in candidatos:
-            ruta_imagen = _guardar_imagen(candidato["imagen"], carpeta_salida / "imagenes", id_siguiente)
-            if ruta_imagen is None:
-                continue
-            filas_nuevas.append(
-                {
-                    "id": id_siguiente,
-                    "titulo": candidato["titulo"],
-                    "descripcion": candidato.get("descripcion", ""),
-                    "ruta_imagen": str((carpeta_salida / "imagenes" / ruta_imagen)),
-                    "categoria": categoria,
-                    "indice_clase": INDICE_CLASE[categoria],
-                }
-            )
-            id_siguiente += 1
-
-    if not filas_nuevas:
-        print("ABO no devolvió candidatos nuevos (revisa ABO_PRODUCT_TYPE_A_CATEGORIA).")
-        return df
-
-    print(f"+{len(filas_nuevas)} ejemplos sumados desde ABO.")
-    return pd.concat([df, pd.DataFrame(filas_nuevas)], ignore_index=True)
+    `limite_filas` (pruebas rápidas) acota las filas de Shopify revisadas
+    y, si no se piden `fuentes` explícitas, usa solo Shopify para no bajar
+    los metadatos de las fuentes externas en una corrida de prueba."""
+    carpeta_salida = Path(carpeta_salida)
+    if fuentes is None:
+        fuentes = ("shopify",) if limite_filas is not None else FUENTES_POR_DEFECTO
+    candidatos = recolectar_candidatos(tuple(fuentes), limite_filas, carpeta_salida / "cache")
+    df = seleccionar(candidatos, max_por_clase, max_extra_por_clase)
+    df = guardar_imagenes(df, carpeta_salida / "imagenes")
+    df["indice_clase"] = df["categoria"].map(INDICE_CLASE)
+    if mostrar_progreso:
+        reportar_conteo(df)
+    return df
 
 
-def traducir_a_espanol(df: pd.DataFrame, tamano_lote: int = 16) -> pd.DataFrame:
-    """Agrega la columna `texto_es`: título + descripción (truncada a 512
-    caracteres) en español. Si el texto ya está en español, se copia tal
-    cual; si no, se traduce con Helsinki-NLP/opus-mt-en-es.
+def reportar_conteo(df: pd.DataFrame) -> dict:
+    tabla = pd.crosstab(df["categoria"], df["fuente"]).reindex(CATEGORIAS).fillna(0).astype(int)
+    tabla["total"] = tabla.sum(axis=1)
+    print(f"\nTotal: {len(df)} ejemplos.")
+    print(tabla.to_string())
+    debiles = tabla.index[tabla["total"] < UMBRAL_CLASE_DEBIL].tolist()
+    if debiles:
+        print(f"\nAviso: {len(debiles)} categoría(s) con menos de {UMBRAL_CLASE_DEBIL} ejemplos: {debiles}.")
+    return {categoria: fila.to_dict() for categoria, fila in tabla.iterrows()}
 
-    Limitación metodológica (documentada también en ml/DATASET.md): este
-    modelo traduce INGLÉS -> español. Shopify/product-catalogue tiene
-    productos en varios idiomas (se vieron títulos en sueco en una
-    muestra real) — para un texto que no es inglés NI español, este
-    modelo igual intenta traducirlo y el resultado puede ser de mala
-    calidad o directamente incoherente. No se filtra por idioma de origen
-    porque identificar automáticamente "inglés vs. otro no-español" con
-    confianza, y descartar lo que no sea inglés, reduciría todavía más un
-    dataset ya chico; se prefirió documentar la limitación y dejar que el
-    equipo decida si vale la pena filtrar al revisar ml/DATASET.md.
-    """
+
+def _texto_fuente(titulo: str, descripcion: str) -> str:
+    """Mismo formato que arma ai-service al clasificar ("título. descripción"),
+    para que BETO vea en producción lo mismo que vio al entrenar."""
+    descripcion = (descripcion or "").strip()[:400]
+    return f"{titulo.strip()}. {descripcion}".strip() if descripcion else titulo.strip()
+
+
+def traducir_a_espanol(
+    df: pd.DataFrame,
+    tamano_lote: int = 32,
+    carpeta_cache: Path | None = None,
+) -> pd.DataFrame:
+    """Agrega la columna `texto_es`: "título. descripción" en español. Lo
+    que ya está en español se copia tal cual; el resto se traduce con
+    Helsinki-NLP/opus-mt-en-es (búsqueda greedy: 2.4x más rápida que la
+    de 4 haces y sin pérdida de calidad apreciable en las pruebas).
+
+    Limitación metodológica (ver ml/DATASET.md): el traductor es inglés ->
+    español; un texto en un tercer idioma se traduce igual y puede quedar
+    de mala calidad."""
+    import torch
     from langdetect import DetectorFactory, LangDetectException, detect
-    from transformers import pipeline
+    from transformers import MarianMTModel, MarianTokenizer
 
-    DetectorFactory.seed = SEMILLA  # langdetect no es determinista si no se fija la semilla
-    traductor = pipeline("translation", model="Helsinki-NLP/opus-mt-en-es", device=-1)
+    DetectorFactory.seed = SEMILLA
+    textos = [_texto_fuente(t, d) for t, d in zip(df["titulo"], df["descripcion"].fillna(""))]
+    idiomas = df["idioma"].tolist() if "idioma" in df.columns else [None] * len(df)
 
-    textos_originales = [
-        f"{fila.titulo} {(fila.descripcion or '')[:512]}".strip() for fila in df.itertuples()
-    ]
+    ruta_cache = (carpeta_cache or Path(".")) / "traducciones.json"
+    cache: dict[str, str] = {}
+    if carpeta_cache is not None and ruta_cache.exists():
+        cache = json.loads(ruta_cache.read_text(encoding="utf-8"))
 
-    def es_espanol(texto: str) -> bool:
+    def es_espanol(texto: str, idioma) -> bool:
+        if idioma == "es":
+            return True
         try:
             return detect(texto) == "es"
         except LangDetectException:
             return False
 
-    a_traducir_idx = [i for i, t in enumerate(textos_originales) if t and not es_espanol(t)]
-    texto_es = list(textos_originales)
-
-    for inicio in range(0, len(a_traducir_idx), tamano_lote):
-        lote_idx = a_traducir_idx[inicio : inicio + tamano_lote]
-        lote_textos = [textos_originales[i] for i in lote_idx]
-        traducciones = traductor(lote_textos, max_length=200)
-        for idx, traduccion in zip(lote_idx, traducciones):
-            texto_es[idx] = traduccion["translation_text"]
+    pendientes = sorted({t for t, i in zip(textos, idiomas) if t and t not in cache and not es_espanol(t, i)})
+    print(f"Traduciendo {len(pendientes)} textos ({len(cache)} ya estaban en caché)...", flush=True)
+    if pendientes:
+        dispositivo = "cuda" if torch.cuda.is_available() else "cpu"
+        tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
+        modelo = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-es").to(dispositivo).eval()
+        for inicio in range(0, len(pendientes), tamano_lote):
+            lote = pendientes[inicio : inicio + tamano_lote]
+            entrada = tokenizer(lote, return_tensors="pt", padding=True, truncation=True, max_length=256).to(dispositivo)
+            with torch.no_grad():
+                salida = modelo.generate(**entrada, num_beams=1, max_new_tokens=256)
+            for original, traducido in zip(lote, tokenizer.batch_decode(salida, skip_special_tokens=True)):
+                cache[original] = traducido
+            if (inicio // tamano_lote) % 20 == 0:
+                print(f"  ...{min(inicio + tamano_lote, len(pendientes))}/{len(pendientes)}", flush=True)
+                if carpeta_cache is not None:
+                    ruta_cache.parent.mkdir(parents=True, exist_ok=True)
+                    ruta_cache.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        if carpeta_cache is not None:
+            ruta_cache.parent.mkdir(parents=True, exist_ok=True)
+            ruta_cache.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
 
     df = df.copy()
-    df["texto_es"] = texto_es
-    print(f"Traducidos {len(a_traducir_idx)}/{len(df)} textos (el resto ya estaba en español).")
+    df["texto_es"] = [cache.get(t, t) for t in textos]
     return df
 
 
-MIN_EJEMPLOS_PARA_PARTIR = 3  # ver el porqué en el mensaje de error de abajo
+MIN_EJEMPLOS_PARA_PARTIR = 10  # ver el porqué en el mensaje de error de abajo
 
 
 def particionar(
@@ -297,18 +229,14 @@ def particionar(
     estratificar: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """70/15/15 estratificado por categoría, semilla fija — TODOS los
-    notebooks deben usar exactamente esta partición para que las métricas
-    sean comparables entre CU1, CU2 y la fusión.
+    scripts y notebooks usan exactamente esta partición para que las
+    métricas de CU1, CU2 y la fusión sean comparables.
 
-    `estratificar=False` (solo para MODO_RAPIDO de los notebooks, con
-    datasets diminutos de pocas filas por clase) hace un split simple sin
-    garantizar que cada clase aparezca en los 3 conjuntos — la partición
-    resultante no sirve para entrenar nada real, solo para probar que el
-    pipeline corre de punta a punta. Con estratificar=True (el caso
-    normal), una clase con menos de `min_ejemplos` ejemplos corta la
-    corrida con un mensaje claro en vez de que sklearn falle con un
-    traceback críptico (o, con muy pocos ejemplos, un solo miembro de una
-    clase no se puede repartir en 3 conjuntos de ninguna forma)."""
+    `estratificar=False` es solo para pruebas con datasets diminutos (la
+    partición no sirve para medir nada). Con estratificar=True, una clase
+    con menos de `min_ejemplos` corta la corrida: con menos de 10 ejemplos
+    el 15% de test tiene 1 o 2 ejemplos de esa clase y su F1 (y por lo
+    tanto el F1-macro) pasa a depender de acertar o fallar uno solo."""
     from sklearn.model_selection import train_test_split
 
     if not estratificar:
@@ -321,49 +249,51 @@ def particionar(
     if len(debiles) > 0:
         raise ValueError(
             f"No se puede partir 70/15/15 de forma estratificada: {dict(debiles)} tienen menos de "
-            f"{min_ejemplos} ejemplos (con una partición en 3 estratificada, el 15% más "
-            "chico necesita al menos un puñado de ejemplos de cada clase, o la partición falla o "
-            "queda vacía para esa clase). Sube --max-por-clase, corre con --complementar-abo, o "
-            "revisa ml/mapeo_categorias.py para esas clases."
+            f"{min_ejemplos} ejemplos. Usa las fuentes complementarias (sin --solo-shopify) o revisa "
+            "ml/mapeo_categorias.py para esas clases."
         )
 
-    train, resto = train_test_split(
-        df, test_size=0.30, random_state=seed, stratify=df["categoria"]
-    )
-    val, test = train_test_split(
-        resto, test_size=0.50, random_state=seed, stratify=resto["categoria"]
-    )
+    train, resto = train_test_split(df, test_size=0.30, random_state=seed, stratify=df["categoria"])
+    val, test = train_test_split(resto, test_size=0.50, random_state=seed, stratify=resto["categoria"])
     return train.reset_index(drop=True), val.reset_index(drop=True), test.reset_index(drop=True)
+
+
+COLUMNAS_PARTICION = ["id", "fuente", "titulo", "descripcion", "texto_es", "ruta_imagen", "indice_clase", "categoria"]
 
 
 def guardar_particion(
     train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, carpeta: Path = Path("ml/datos")
 ) -> None:
+    carpeta = Path(carpeta)
     carpeta.mkdir(parents=True, exist_ok=True)
-    columnas = ["id", "titulo", "descripcion", "texto_es", "ruta_imagen", "indice_clase", "categoria"]
-    train[columnas].to_csv(carpeta / "train.csv", index=False)
-    val[columnas].to_csv(carpeta / "val.csv", index=False)
-    test[columnas].to_csv(carpeta / "test.csv", index=False)
+    for nombre, parte in (("train", train), ("val", val), ("test", test)):
+        if "fuente" not in parte.columns:
+            parte = parte.assign(fuente="shopify")
+        parte[COLUMNAS_PARTICION].to_csv(carpeta / f"{nombre}.csv", index=False)
+    reporte = {
+        "particion": {"train": len(train), "val": len(val), "test": len(test)},
+        "por_clase_y_fuente": reportar_conteo(pd.concat([train, val, test])) if "fuente" in train.columns else {},
+    }
+    (carpeta / "reporte_dataset.json").write_text(json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\nGuardado: {len(train)} train / {len(val)} val / {len(test)} test en {carpeta}/")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--max-por-clase", type=int, default=300)
-    parser.add_argument("--limite-filas", type=int, default=None, help="Tope de filas del dataset a revisar (para pruebas rápidas).")
-    parser.add_argument("--carpeta-salida", type=Path, default=Path("ml/datos"))
-    parser.add_argument("--complementar-abo", action="store_true", default=False)
+    parser.add_argument("--max-por-clase", type=int, default=500)
+    parser.add_argument("--max-extra-por-clase", type=int, default=300,
+                        help="Tope por clase para CADA fuente complementaria (moda_kaggle, abo).")
+    parser.add_argument("--limite-filas", type=int, default=None, help="Tope de filas de Shopify (pruebas rápidas).")
+    parser.add_argument("--carpeta-salida", type=Path, default=Path(__file__).resolve().parent / "datos")
+    parser.add_argument("--solo-shopify", action="store_true", help="No usar las fuentes complementarias.")
     args = parser.parse_args()
 
-    print(f"Construyendo dataset (max {args.max_por_clase}/clase" + (f", límite {args.limite_filas} filas" if args.limite_filas else "") + ")...")
-    df = construir_dataset(args.max_por_clase, args.limite_filas, args.carpeta_salida)
-
-    if args.complementar_abo:
-        df = complementar_con_abo(df, carpeta_salida=args.carpeta_salida)
-
-    print("\nTraduciendo textos no-españoles (Helsinki-NLP/opus-mt-en-es)...")
-    df = traducir_a_espanol(df)
-
+    fuentes = ("shopify",) if args.solo_shopify else FUENTES_POR_DEFECTO
+    print(f"Construyendo dataset: fuentes={fuentes}, max {args.max_por_clase}/clase "
+          f"(máx. {args.max_extra_por_clase} por fuente complementaria)")
+    df = construir_dataset(args.max_por_clase, args.limite_filas, args.carpeta_salida,
+                           fuentes=fuentes, max_extra_por_clase=args.max_extra_por_clase)
+    df = traducir_a_espanol(df, carpeta_cache=args.carpeta_salida / "cache")
     try:
         train, val, test = particionar(df)
     except ValueError as error:

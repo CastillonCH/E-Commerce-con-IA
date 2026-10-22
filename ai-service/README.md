@@ -46,8 +46,16 @@ uvicorn app.main:app --reload --port 8000
 
 ## Estructura esperada de `models/`
 
-Ver `docs/GUIA_COLAB.md` para cómo copiar exactamente esto desde lo que
-guardan los notebooks en Google Drive.
+No hace falta armarla a mano: `ml/exportar_a_ai_service.py` copia lo que
+entrenaron los scripts (`docs/ENTRENAMIENTO_LOCAL.md`) o los notebooks
+(`docs/GUIA_COLAB.md`) con exactamente estos nombres.
+
+Cada artefacto puede traer sus clases en cualquier orden (el checkpoint
+de imagen en `"clases"`, BETO en `config.id2label`, sklearn en
+`classes_`, que va en orden alfabético): el servicio las reordena siempre
+**por nombre** al `indice_clase` de la taxonomía
+(`app/modelos/distribucion.py`), y si un artefacto trae una clase que no
+está en `app/config.py`, no lo carga (queda en el log).
 
 ```
 models/

@@ -15,6 +15,7 @@ from torch import nn
 from torchvision import models, transforms
 
 from app.esquemas import TopK
+from app.modelos.distribucion import a_taxonomia, resumir, validar_clases
 
 _TRANSFORM = transforms.Compose(
     [
@@ -52,7 +53,8 @@ def cargar(ruta_checkpoint, codigo: str, arquitectura: str) -> ModeloImagen:
     # list[str]} nada más — no hace falta deserializar pickle arbitrario,
     # y es la recomendación actual de seguridad de PyTorch para torch.load.
     estado = torch.load(ruta_checkpoint, map_location="cpu", weights_only=True)
-    clases: list[str] = estado["clases"]
+    clases: list[str] = list(estado["clases"])
+    validar_clases(clases, f"{codigo} ({ruta_checkpoint})")
     modelo = _construir_arquitectura(arquitectura, len(clases))
     modelo.load_state_dict(estado["modelo"])
     modelo.eval()
@@ -64,22 +66,16 @@ def _decodificar(imagen_bytes: bytes) -> Image.Image:
     return Image.open(BytesIO(imagen_bytes)).convert("RGB")
 
 
-def clasificar(modelo_imagen: ModeloImagen, imagen_bytes: bytes, k: int = 5) -> tuple[int, str, float, list[TopK]]:
+def distribucion(modelo_imagen: ModeloImagen, imagen_bytes: bytes) -> list[float]:
+    """Las 21 probabilidades en el orden de la taxonomía (indice_clase)."""
     entrada = _TRANSFORM(_decodificar(imagen_bytes)).unsqueeze(0)
     with torch.no_grad():
-        logits = modelo_imagen.modelo(entrada)
-        probabilidades = torch.softmax(logits, dim=1).squeeze(0)
+        probabilidades = torch.softmax(modelo_imagen.modelo(entrada), dim=1).squeeze(0).tolist()
+    return a_taxonomia(probabilidades, modelo_imagen.clases)
 
-    indice = int(torch.argmax(probabilidades).item())
-    categoria = modelo_imagen.clases[indice]
-    confianza = float(probabilidades[indice].item())
 
-    top_valores, top_indices = torch.topk(probabilidades, k=min(k, len(modelo_imagen.clases)))
-    top_k = [
-        TopK(indice_clase=int(i), categoria=modelo_imagen.clases[int(i)], prob=float(v))
-        for v, i in zip(top_valores.tolist(), top_indices.tolist())
-    ]
-    return indice, categoria, confianza, top_k
+def clasificar(modelo_imagen: ModeloImagen, imagen_bytes: bytes, k: int = 5) -> tuple[int, str, float, list[TopK]]:
+    return resumir(distribucion(modelo_imagen, imagen_bytes), k)
 
 
 def embedding(modelo_imagen: ModeloImagen, imagen_bytes: bytes) -> list[float]:
