@@ -12,8 +12,10 @@ function ProductCell({ product }: { product: DuplicateProductSummary }) {
   return (
     <div className="flex items-center gap-3">
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-        {product.imagenUrl && (
-          <Image src={product.imagenUrl} alt={product.nombre} fill sizes="48px" className="object-cover" />
+        {product.imagenUrl ? (
+          <Image src={product.imagenUrl} alt={product.nombre} fill sizes="48px" unoptimized className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">Sin foto</div>
         )}
       </div>
       <div className="min-w-0">

@@ -13,11 +13,6 @@ import {
   rejectReviewAction,
 } from "@/app/admin/(protected)/revision/actions";
 
-// Funciones de nivel de módulo (no definidas dentro del componente): la
-// regla react-hooks/purity trata cualquier función anidada dentro de un
-// componente/hook como parte del render, así que Date.now() ahí adentro
-// siempre se marca como impuro, aunque solo se llame desde un manejador de
-// evento. Declaradas afuera, quedan fuera de ese análisis.
 function marcaDeTiempoActual(): number {
   return Date.now();
 }
@@ -29,10 +24,6 @@ export function ReviewQueue({ items }: { items: PendingReviewEntry[] }) {
   const router = useRouter();
   const [categorias, setCategorias] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
-  // "Desde que se abre la ficha hasta que se decide" (F4.7, tiempo_revision_seg):
-  // cada ficha arranca su cronómetro la primera vez que aparece en esta lista.
-  // Captura el timestamp en un efecto, no durante el render: el render debe
-  // quedar puro (regla react-hooks/purity).
   const tiemposInicio = useRef<Record<string, number>>({});
   useEffect(() => {
     for (const entry of items) {
@@ -50,19 +41,12 @@ export function ReviewQueue({ items }: { items: PendingReviewEntry[] }) {
 
   async function handleApprove(entry: PendingReviewEntry) {
     setProcessingId(entry.product.id);
-    // El <select> es no controlado (defaultValue): si categoria_ia no es
-    // una categoría real (p. ej. "Sin categoría sugerida", en modo demo,
-    // donde no hay fila en predicciones_ia), el navegador muestra la
-    // primera opción de la lista sin disparar onChange — categorias[id]
-    // queda vacío aunque haya algo visualmente seleccionado. Este fallback
-    // reproduce exactamente esa regla para que lo que se envía coincida
-    // con lo que el admin ve en pantalla.
-    const categoriasDisponibles = CATEGORIAS_IA[entry.product.departamento];
+    const categoriasDisponibles = CATEGORIAS_IA[entry.product.departamento] || [];
     const categoriaFinal =
       categorias[entry.product.id] ??
       (categoriasDisponibles.includes(entry.product.categoria_ia)
         ? entry.product.categoria_ia
-        : categoriasDisponibles[0]);
+        : categoriasDisponibles[0] || entry.product.categoria_ia);
     const inicio = tiemposInicio.current[entry.product.id] ?? marcaDeTiempoActual();
     const tiempoRevisionSeg = segundosTranscurridosDesde(inicio);
     const result = await approveReviewAction(entry.product.id, categoriaFinal, tiempoRevisionSeg);
@@ -90,7 +74,7 @@ export function ReviewQueue({ items }: { items: PendingReviewEntry[] }) {
   return (
     <ul className="flex flex-col gap-4">
       {items.map((entry) => {
-        const categoriasDisponibles = CATEGORIAS_IA[entry.product.departamento];
+        const categoriasDisponibles = CATEGORIAS_IA[entry.product.departamento] || [];
         const isProcessing = processingId === entry.product.id;
 
         return (
@@ -99,13 +83,20 @@ export function ReviewQueue({ items }: { items: PendingReviewEntry[] }) {
             className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center"
           >
             <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-              <Image
-                src={entry.product.imagen_url}
-                alt={entry.product.nombre}
-                fill
-                sizes="64px"
-                className="object-cover"
-              />
+              {entry.product.imagen_url ? (
+                <Image
+                  src={entry.product.imagen_url}
+                  alt={entry.product.nombre}
+                  fill
+                  sizes="64px"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                  Sin foto
+                </div>
+              )}
             </div>
 
             <div className="min-w-0 flex-1">

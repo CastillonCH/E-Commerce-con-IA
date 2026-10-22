@@ -5,17 +5,9 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const CSP = [
   "default-src 'self'",
-  // Next inyecta scripts inline para la hidratación; sin una estrategia de
-  // nonce (fuera de alcance de este refactor) 'unsafe-inline' es necesario.
-  // 'unsafe-eval' solo en desarrollo: React/Turbopack lo usan para
-  // reconstruir stack traces de componentes en `next dev`, nunca en
-  // producción (confirmado: sin él, la consola muestra el warning
-  // "eval() is not supported..." en cada página durante el dev).
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  // blob: es necesario para la vista previa local de ImageDropzone
-  // (URL.createObjectURL sobre el archivo aún no subido).
-  `img-src 'self' data: blob: https://images.unsplash.com https://lh3.googleusercontent.com${azureBlobHostname ? ` https://${azureBlobHostname}` : ""}`,
+  `img-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://images.unsplash.com https://example.com https://lh3.googleusercontent.com${azureBlobHostname ? ` https://${azureBlobHostname}` : ""}`,
   "font-src 'self' data:",
   "connect-src 'self' https://oauth2.googleapis.com https://www.googleapis.com",
   "form-action 'self'",
@@ -25,8 +17,12 @@ const CSP = [
 
 const nextConfig: NextConfig = {
   images: {
+    dangerouslyAllowLocalIP: true,
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
+      { protocol: "https", hostname: "example.com" },
+      { protocol: "http", hostname: "localhost" },
+      { protocol: "http", hostname: "127.0.0.1" },
       ...(azureBlobHostname
         ? [{ protocol: "https" as const, hostname: azureBlobHostname }]
         : []),

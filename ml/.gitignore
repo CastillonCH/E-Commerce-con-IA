@@ -5,3 +5,7 @@ datos/
 notebooks/*.ipynb_checkpoints/
 *.pt
 *.pth
+*.safetensors
+*.bin
+*.joblib
+modelos/
