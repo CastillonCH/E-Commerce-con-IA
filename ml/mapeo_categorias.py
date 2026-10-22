@@ -78,7 +78,9 @@ PREFIJOS: dict[str, list[Prefijo]] = {
     ],
     "Relojes inteligentes y wearables": [
         Prefijo("Apparel & Accessories > Jewelry > Smart Watches", confirmado=True),
-        Prefijo("Apparel & Accessories > Jewelry > Watches", confirmado=False),
+        Prefijo("Apparel & Accessories > Jewelry > Watches", confirmado=True),
+        Prefijo("Apparel & Accessories > Jewelry > Watch Accessories > Watch Bands", confirmado=True),
+        Prefijo("Electronics > Communications > Wearable Technology", confirmado=False),
     ],
     "Electrodomésticos de cocina": [
         Prefijo("Home & Garden > Kitchen & Dining > Kitchen Appliances", confirmado=True),
@@ -130,6 +132,10 @@ PREFIJOS: dict[str, list[Prefijo]] = {
         Prefijo("Toys & Games > Toys > Building Toys", confirmado=True),
     ],
     "Peluches": [
+        Prefijo("Toys & Games > Toys > Dolls, Playsets & Toy Figures > Stuffed Animals", confirmado=True),
+        Prefijo("Toys & Games > Toys > Dolls, Playsets & Toy Figures > Puppets & Marionettes", confirmado=True),
+        Prefijo("Baby & Toddler > Baby Toys & Activity Equipment > Baby Soothers > Plush Toys", confirmado=True),
+        Prefijo("Animals & Pet Supplies > Pet Supplies > Cat Supplies > Cat Toys > Stuffed Toys & Plushies", confirmado=True),
         Prefijo("Toys & Games > Toys > Stuffed Animals & Plush Toys", confirmado=False),
     ],
     "Vehículos de juguete": [

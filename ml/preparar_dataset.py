@@ -287,7 +287,7 @@ def traducir_a_espanol(df: pd.DataFrame, tamano_lote: int = 16) -> pd.DataFrame:
     return df
 
 
-MIN_EJEMPLOS_PARA_PARTIR = 10  # ver el porqué en el mensaje de error de abajo
+MIN_EJEMPLOS_PARA_PARTIR = 3  # ver el porqué en el mensaje de error de abajo
 
 
 def particionar(

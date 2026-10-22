@@ -1,0 +1,134 @@
+================================================================================
+GUIA TECNICA COMPLETA PARA EXPOSICION: MODULO DE IA (NOVASTORE)
+================================================================================
+
+1. ¿SE USO GOOGLE COLAB O TU PROPIA COMPUTADORA?
+--------------------------------------------------------------------------------
+- Aunque el proyecto originalmente traia notebooks pensados para Google Colab,
+  NO se uso Colab.
+- Detectamos que tu PC cuenta con una tarjeta grafica dedicada de ultima generacion:
+  NVIDIA GeForce RTX 4060 con 8.6 GB de VRAM.
+- Se configuro el entorno local con Python 3.11, PyTorch 2.6 y CUDA 12.4.
+- Ventaja para tu exposicion: Puedes destacar que todo el pipeline se ejecuto
+  en infraestructura local dedicada, con aceleracion por GPU propia, lo cual
+  permitio entrenar mas rapido y sin los limites de desconexion de Colab.
+
+
+2. ¿COMO SE VINCULO CON HUGGING FACE Y QUE DATASET SE USO?
+--------------------------------------------------------------------------------
+- Dataset utilizado: "Shopify/product-catalogue" (alojado en Hugging Face, con 
+  licencia Apache-2.0 y mas de 48,000 productos de tiendas de comercio electronico).
+- Como se descargo y vinculo:
+  Se utilizo la libreria oficial 'datasets' de Hugging Face en Python:
+  
+      from datasets import load_dataset
+      ds = load_dataset("Shopify/product-catalogue", split="train", streaming=True)
+  
+- Detalle clave (Modo Streaming):
+  Para no saturar el disco ni esperar a descargar 9.5 GB de un solo golpe,
+  se utilizo 'streaming=True'. Esto descarga los productos en tiempo real, uno
+  a uno, procesando imagen y texto sobre la marcha.
+
+
+3. ¿QUE ALGORITMO Y TECNICAS SE USARON PARA LIMPIAR Y PREPARAR LOS DATOS?
+--------------------------------------------------------------------------------
+El script 'preparar_dataset.py' implemento los siguientes filtros y algoritmos:
+
+a) Deduplicacion por Hash/Clave Normalizada:
+   Algoritmo: Se genera una clave en minusculas combinando titulo y descripcion:
+   clave = f"{titulo.strip().lower()}||{descripcion.strip().lower()}"
+   Se almacenan en un conjunto en memoria (Set O(1)). Si un producto repite
+   nombre y descripcion, se descarta para evitar filas duplicadas.
+
+b) Filtro de Integridad de Datos e Imagenes Corruptas:
+   Se descartan filas que no tengan titulo o cuya imagen este rota:
+   Se valida abriendo con PIL (Python Imaging Library) en un buffer de memoria:
+   Image.open(io.BytesIO(bytes_imagen)).convert("RGB")
+   Si la imagen lanza excepcion o viene vacia, se omite.
+
+c) Mapeo Taxonomico por Prefijo Mas Especifico:
+   El dataset de Shopify usa la taxonomica de Google ("Electronics > Audio > ...").
+   NovaStore tiene 21 categorias fijas.
+   Algoritmo: Se comparan los prefijos de las categorias. Si varios coinciden,
+   gana el prefijo con mayor longitud de caracteres (el mas especifico).
+
+d) Balanceo / Cap de Ejemplos:
+   Se definio un limite maximo de 300 productos por categoria para evitar que
+   clases masivas absorban a las demas.
+
+e) Particion Estratificada (Train / Val / Test):
+   Algoritmo: 'train_test_split' de scikit-learn con 'stratify=df["categoria"]'.
+   - 70% Entrenamiento (2,054 productos)
+   - 15% Validacion (440 productos)
+   - 15% Prueba (441 productos)
+   Se garantiza que todas las 21 categorias esten representadas proporcionalmente
+   en los tres conjuntos con una semilla fija (seed=42) para que las metricas
+   sean 100% reproducibles y sin Data Leakage (fuga de datos).
+
+
+4. ¿QUE MODELOS DE IA SE USARON Y COMO SE ENTRENARON?
+--------------------------------------------------------------------------------
+
+A) MODELO 1: ResNet-50 (cu1-resnet50-v1) - [Vision por Computadora]
+   - Modelo base: ResNet-50 preentrenada en ImageNet-1K (v2) de PyTorch TorchVision.
+   - Algoritmo: Transfer Learning en 2 fases con Optimizador AdamW:
+     * Fase 1 (Cabeza): Se congelan todos los bloques convolucionales y solo se
+       entrenan los pesos de la capa final 'fc' adaptada a 21 clases (lr=1e-3).
+     * Fase 2 (Fine-Tuning): Se descongela 'layer4' (el bloque de capas convolucionales
+       mas profundas) con lr=1e-4 y ajuste fino.
+     * Regularizacion: Data Augmentation (RandomResizedCrop, RandomHorizontalFlip,
+       ColorJitter) y Early Stopping con paciencia de 2 epocas.
+   - Extractor de Embeddings: Genera vectores de 2,048 dimensiones desde la capa
+     de Global Average Pooling (para CU5: busqueda por similitud y duplicados).
+   - Resultado en Test: Accuracy = 66.21% | F1-Macro = 64.19%.
+
+B) MODELO 2: EfficientNet-B0 (cu1-efficientnet-b0-v1) - [Vision por Computadora]
+   - Modelo base: EfficientNet-B0 preentrenada en ImageNet.
+   - Algoritmo: Mismo esquema de 2 fases.
+   - Resultado en Test: Accuracy = 59.18% | F1-Macro = 47.08%.
+
+C) MODELO 3: Baseline TF-IDF + Regresion Logistica (cu2-tfidf-logreg-v1) - [NLP]
+   - Algoritmo: Vectorizador TF-IDF con n-gramas (1, 2) y maximo 20,000 features,
+     seguido de un clasificador de Regresion Logistica con penalizacion L2
+     y pesos de clase balanceados (class_weight="balanced").
+   - Resultado en Test: Accuracy = 67.80% | F1-Macro = 65.79%.
+
+D) MODELO 4: BETO (cu2-beto-v1) - [NLP Deep Learning]
+   - Modelo base: "dccuchile/bert-base-spanish-wwm-cased" de Hugging Face.
+     Transformer bidireccional de 110M de parametros entrenado en corpus de español.
+   - Algoritmo: Fine-Tuning de extremo a extremo usando PyTorch + Transformers:
+     * Tokenizador WordPiece (max_length=128).
+     * Optimizador AdamW (lr=2e-5) con Warmup lineal (10% de los pasos totales).
+     * Early Stopping monitoreando el F1-macro de validacion.
+   - Embeddings: Genera representaciones vectoriales de 768 dimensiones mediante
+     Mean Pooling sobre la ultima capa oculta.
+   - Resultado en Test: Accuracy = 61.00% | F1-Macro = 36.21%.
+
+
+5. FUSION MULTIMODAL (ResNet-50 [Foto] + BETO [Texto])
+--------------------------------------------------------------------------------
+- Algoritmo: Ensamble probabilistico tardio (Late Fusion).
+  Combina las probabilidades Softmax de ambos modelos mediante una suma ponderada:
+  
+      P_final = alpha * P_imagen + (1 - alpha) * P_texto
+
+- Optimizacion del hiperparametro alpha:
+  Se busco el mejor peso 'alpha' barreando de 0.0 a 1.0 sobre el conjunto de
+  VALIDACION (nunca sobre test, para evitar sobreajuste).
+  El peso optimo fue alpha = 0.8 (80% peso a la imagen y 20% al texto).
+- Resultado final de la Fusion en Test:
+  * Accuracy: 68.71% (Supero por +2.5% a la imagen y por +7.7% al texto).
+  * F1-Macro: 65.61%.
+
+
+6. INTEGRACION CON LA BASE DE DATOS Y EL SISTEMA
+--------------------------------------------------------------------------------
+- Todos los modelos y sus metricas quedaron persistidos en PostgreSQL 18
+  en la tabla 'novastore.modelos_ia' con estado 'evaluado':
+  1. cu1-resnet50-v1        -> cu1-resnet50.pt
+  2. cu1-efficientnet-b0-v1 -> cu1-efficientnet-b0.pt
+  3. cu2-tfidf-logreg-v1    -> cu2-tfidf-logreg-v1/pipeline.joblib
+  4. cu2-beto-v1            -> cu2-beto-v1/
+- El modelo ganador (ResNet-50) fue copiado a 'ai-service/app/modelos/resnet50.pt'
+  para alimentar el microservicio FastAPI en el puerto 8000.
+================================================================================
