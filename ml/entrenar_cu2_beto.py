@@ -31,9 +31,9 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from comun import (
-    CARPETA_DATOS, CARPETA_MODELOS, CLASES, LABEL2ID, META_CU2, cargar_particiones, configurar_consola, dispositivo,
-    escribir_sql_registro, fijar_semillas, guardar_curvas, guardar_matriz_confusion, guardar_resultados, metricas,
-    metricas_por_fuente, pesos_por_clase, resumen,
+    CARPETA_DATOS, CARPETA_MODELOS, CLASES, LABEL2ID, META_CU2, borrar_estado, cargar_estado, cargar_particiones,
+    configurar_consola, dispositivo, escribir_sql_registro, fijar_semillas, guardar_curvas, guardar_estado,
+    guardar_matriz_confusion, guardar_resultados, metricas, metricas_por_fuente, pesos_por_clase, resumen,
 )
 
 CODIGO = "cu2-beto-v1"
@@ -52,6 +52,8 @@ def main() -> None:
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--label-smoothing", type=float, default=0.05)
     parser.add_argument("--modo-rapido", action="store_true", help="Pocas filas y 1 época, solo para probar que corre.")
+    parser.add_argument("--reanudar", action="store_true",
+                        help="Si una corrida anterior se cortó, sigue desde la última época completa.")
     args = parser.parse_args()
 
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
@@ -119,9 +121,22 @@ def main() -> None:
         p = torch.cat(probs).numpy()
         return metricas(y_true, p.argmax(1)), perdida / max(len(y_true), 1), p
 
+    salida = args.salida
+    salida.mkdir(parents=True, exist_ok=True)
     historia = {"epoca": [], "train_loss": [], "val_loss": [], "val_accuracy": [], "val_f1_macro": []}
-    mejor_f1, mejor_estado, sin_mejora = -1.0, None, 0
-    for epoca in range(1, args.epocas + 1):
+    mejor_f1, mejor_estado, sin_mejora, epoca_inicial = -1.0, None, 0, 1
+    estado = cargar_estado(salida) if args.reanudar else None
+    if estado is not None:
+        modelo.load_state_dict(estado["modelo"])
+        optimizador.load_state_dict(estado["optimizador"])
+        scheduler.load_state_dict(estado["scheduler"])
+        escalador.load_state_dict(estado["escalador"])
+        historia, mejor_f1, mejor_estado, sin_mejora = estado["historia"], estado["mejor_f1"], estado["mejor_estado"], estado["sin_mejora"]
+        epoca_inicial = estado["epoca"] + 1
+
+    for epoca in range(epoca_inicial, args.epocas + 1):
+        if sin_mejora >= args.paciencia:
+            break
         modelo.train()
         inicio, perdida_total, n = time.time(), 0.0, 0
         for lote in train_loader:
@@ -151,9 +166,14 @@ def main() -> None:
             mejor_estado = {k: v.detach().cpu().clone() for k, v in modelo.state_dict().items()}
         else:
             sin_mejora += 1
-            if sin_mejora >= args.paciencia:
-                print(f"  [early stopping] sin mejora en {args.paciencia} épocas")
-                break
+        guardar_estado(salida, {
+            "epoca": epoca, "modelo": modelo.state_dict(), "optimizador": optimizador.state_dict(),
+            "scheduler": scheduler.state_dict(), "escalador": escalador.state_dict(), "historia": historia,
+            "mejor_f1": mejor_f1, "mejor_estado": mejor_estado, "sin_mejora": sin_mejora,
+        })
+        if sin_mejora >= args.paciencia:
+            print(f"  [early stopping] sin mejora en {args.paciencia} épocas")
+            break
 
     modelo.load_state_dict(mejor_estado)
     m_test, _, probs_test = evaluar(test_loader)
@@ -164,8 +184,6 @@ def main() -> None:
     for fuente, valores in por_fuente.items():
         print(f"  {fuente:12} n={valores['n']:4} acc={valores['accuracy']:.4f} f1(clases presentes)={valores['f1_macro_clases_presentes']:.4f}")
 
-    salida = args.salida
-    salida.mkdir(parents=True, exist_ok=True)
     tokenizer.model_max_length = args.max_length  # ai-service trunca con este mismo valor
     modelo.save_pretrained(salida)
     tokenizer.save_pretrained(salida)
@@ -179,6 +197,7 @@ def main() -> None:
     guardar_matriz_confusion(test["etiqueta"], y_pred, salida / "matriz_confusion.png")
     guardar_curvas(historia, salida / "curvas_entrenamiento.png", "BETO")
     sql = escribir_sql_registro(salida, CODIGO, m_test, hiper, f"{CODIGO}/")
+    borrar_estado(salida)  # terminó bien: el estado intermedio (~2 GB) ya no hace falta
     if args.modo_rapido:
         print("\n[MODO RÁPIDO] Estas métricas NO son válidas: solo confirman que el script corre.")
     print(f"[OK] Modelo, métricas y {sql.name} en {salida}")

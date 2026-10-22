@@ -26,12 +26,13 @@ def nb_nuevo():
     return nb
 
 
+# id fijo por posición: regenerar sin cambios no ensucia el diff de git.
 def md(nb, texto):
-    nb["cells"].append(nbf.v4.new_markdown_cell(texto))
+    nb["cells"].append(nbf.v4.new_markdown_cell(texto, id=f"celda-{len(nb['cells']):02d}"))
 
 
 def code(nb, texto):
-    nb["cells"].append(nbf.v4.new_code_cell(texto))
+    nb["cells"].append(nbf.v4.new_code_cell(texto, id=f"celda-{len(nb['cells']):02d}"))
 
 
 CELDA_INSTALAR = '''\
@@ -220,7 +221,7 @@ Tiempo estimado con GPU T4: del orden de 15-30 minutos.""")
     code(nb, CELDA_INSTALAR)
     code(nb, CELDA_MODO_RAPIDO)
     md(nb, "## Entrenar y evaluar en el conjunto de PRUEBA")
-    code(nb, 'get_ipython().system("python entrenar_cu2_beto.py" + (" --modo-rapido" if MODO_RAPIDO else ""))\n')
+    code(nb, 'get_ipython().system("python entrenar_cu2_beto.py" + (" --modo-rapido" if MODO_RAPIDO else " --reanudar"))\n')
     md(nb, "## Resultados")
     code(nb, celda_mostrar("cu2-beto-v1"))
     return nb
@@ -247,7 +248,7 @@ desconecta, no se pierde el mejor checkpoint hasta ese momento.""")
     code(nb, CELDA_INSTALAR)
     code(nb, CELDA_MODO_RAPIDO)
     md(nb, "## Entrenar ResNet-50 y EfficientNet-B0")
-    code(nb, 'get_ipython().system("python entrenar_cu1.py" + (" --modo-rapido" if MODO_RAPIDO else ""))\n')
+    code(nb, 'get_ipython().system("python entrenar_cu1.py" + (" --modo-rapido" if MODO_RAPIDO else " --reanudar"))\n')
     md(nb, "## Resultados por arquitectura")
     code(nb, celda_mostrar("cu1-resnet50-v1"))
     code(nb, celda_mostrar("cu1-efficientnet-b0-v1"))

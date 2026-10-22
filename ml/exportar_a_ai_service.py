@@ -17,7 +17,7 @@ import json
 import shutil
 from pathlib import Path
 
-from comun import CARPETA_ML, CARPETA_MODELOS, CLASES, configurar_consola
+from comun import CARPETA_ML, CARPETA_MODELOS, CLASES, NOMBRE_ESTADO, configurar_consola
 
 DESTINO_POR_DEFECTO = CARPETA_ML.parent / "ai-service" / "models"
 ARCHIVOS = {
@@ -56,7 +56,8 @@ def main() -> None:
         if destino.exists():
             shutil.rmtree(destino)
         destino.mkdir(parents=True)
-        nombres = archivos or [p.name for p in origen.iterdir() if p.is_file() and p.suffix not in NO_COPIAR]
+        nombres = archivos or [p.name for p in origen.iterdir()
+                               if p.is_file() and p.suffix not in NO_COPIAR and not p.name.startswith(NOMBRE_ESTADO)]
         for nombre in nombres:
             shutil.copy2(origen / nombre, destino / nombre)
         exportados.append(codigo)

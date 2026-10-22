@@ -41,9 +41,9 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 
 from comun import (
-    CARPETA_DATOS, CARPETA_MODELOS, CLASES, META_CU1, cargar_particiones, configurar_consola, dispositivo,
-    escribir_sql_registro, fijar_semillas, guardar_curvas, guardar_matriz_confusion, guardar_resultados, metricas,
-    metricas_por_fuente, pesos_por_clase, resumen,
+    CARPETA_DATOS, CARPETA_MODELOS, CLASES, META_CU1, borrar_estado, cargar_estado, cargar_particiones,
+    configurar_consola, dispositivo, escribir_sql_registro, fijar_semillas, guardar_curvas, guardar_estado,
+    guardar_matriz_confusion, guardar_resultados, metricas, metricas_por_fuente, pesos_por_clase, resumen,
 )
 
 NORMALIZAR = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -171,8 +171,19 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
         return metricas(y_true, p.argmax(1)), perdida / max(len(y_true), 1), p
 
     historia = {"epoca": [], "train_loss": [], "val_loss": [], "val_accuracy": [], "val_f1_macro": []}
-    mejor_f1, mejor_estado, sin_mejora = -1.0, None, 0
-    for epoca in range(1, args.epocas + 1):
+    mejor_f1, mejor_estado, sin_mejora, epoca_inicial = -1.0, None, 0, 1
+    estado = cargar_estado(salida) if args.reanudar else None
+    if estado is not None:
+        modelo.load_state_dict(estado["modelo"])
+        optimizador.load_state_dict(estado["optimizador"])
+        scheduler.load_state_dict(estado["scheduler"])
+        escalador.load_state_dict(estado["escalador"])
+        historia, mejor_f1, mejor_estado, sin_mejora = estado["historia"], estado["mejor_f1"], estado["mejor_estado"], estado["sin_mejora"]
+        epoca_inicial = estado["epoca"] + 1
+
+    for epoca in range(epoca_inicial, args.epocas + 1):
+        if sin_mejora >= args.paciencia:
+            break
         modelo.train()
         inicio, perdida_total, n = time.time(), 0.0, 0
         for entradas, etiquetas in train_loader:
@@ -206,9 +217,14 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
             torch.save({"modelo": mejor_estado, "clases": CLASES, "arquitectura": arquitectura}, salida / "modelo.pt")
         else:
             sin_mejora += 1
-            if sin_mejora >= args.paciencia:
-                print(f"  [early stopping] sin mejora en {args.paciencia} épocas")
-                break
+        guardar_estado(salida, {
+            "epoca": epoca, "modelo": modelo.state_dict(), "optimizador": optimizador.state_dict(),
+            "scheduler": scheduler.state_dict(), "escalador": escalador.state_dict(), "historia": historia,
+            "mejor_f1": mejor_f1, "mejor_estado": mejor_estado, "sin_mejora": sin_mejora,
+        })
+        if sin_mejora >= args.paciencia:
+            print(f"  [early stopping] sin mejora en {args.paciencia} épocas")
+            break
 
     modelo.load_state_dict(mejor_estado)
     m_test, _, probs_test = evaluar(test_loader)
@@ -231,6 +247,7 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
     guardar_matriz_confusion(test["etiqueta"], y_pred, salida / "matriz_confusion.png")
     guardar_curvas(historia, salida / "curvas_entrenamiento.png", arquitectura)
     escribir_sql_registro(salida, codigo, m_test, hiper, f"{codigo}/modelo.pt")
+    borrar_estado(salida)  # terminó bien: el estado intermedio ya no hace falta (y pesa)
     return m_test
 
 
@@ -246,6 +263,8 @@ def main() -> None:
     parser.add_argument("--lr-backbone", type=float, default=None, help="Por defecto 1e-4 (ResNet-50) / 3e-4 (EfficientNet-B0).")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--modo-rapido", action="store_true", help="Pocas imágenes y 1 época, solo para probar que corre.")
+    parser.add_argument("--reanudar", action="store_true",
+                        help="Si una corrida anterior se cortó, sigue desde la última época completa.")
     args = parser.parse_args()
 
     fijar_semillas()

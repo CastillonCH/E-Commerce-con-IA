@@ -90,6 +90,23 @@ modelos):
 .\.venv\Scripts\python.exe entrenar_cu1.py --modo-rapido
 ```
 
+### Si se corta a la mitad (apagón, reinicio, cerraste la ventana)
+
+BETO y las CNN guardan al final de cada época el estado completo
+(`estado_entrenamiento.pt` en la carpeta del modelo: pesos, optimizador,
+scheduler, historia y semillas). Vuelve a lanzar el MISMO comando con
+`--reanudar` y sigue desde la última época terminada:
+
+```powershell
+.\.venv\Scripts\python.exe entrenar_cu2_beto.py --reanudar
+.\.venv\Scripts\python.exe entrenar_cu1.py --arquitecturas efficientnet_b0 --reanudar
+```
+
+En `entrenar_cu1.py`, pon en `--arquitecturas` solo las que faltan: una
+arquitectura que ya terminó (tiene `metricas.json`) se volvería a entrenar
+desde cero. Al terminar bien, el script borra `estado_entrenamiento.pt`
+(el de BETO pesa ~1,7 GB) y el exportador nunca lo copia a ai-service.
+
 ### Si te quedas sin memoria de GPU
 
 `entrenar_cu1.py --batch 16` (por defecto 32) o

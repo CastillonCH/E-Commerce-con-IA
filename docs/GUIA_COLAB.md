@@ -116,8 +116,13 @@ fusión imagen+texto (necesita que ya hayas corrido 01 y/o 02). Tiempo
 estimado con GPU T4: 45-90 minutos. Meta del proyecto: accuracy ≥ 0.80 y
 F1-macro ≥ 0.75 en el conjunto de prueba.
 
-Si Colab te desconecta a la mitad, el mejor checkpoint hasta ese momento
-ya quedó guardado en Drive (`modelo.pt` se reescribe en cada mejora).
+Si Colab te desconecta a la mitad, vuelve a conectar, corre otra vez las
+celdas: los notebooks 02 y 03 llaman a los scripts con `--reanudar`, que
+retoman desde la última época terminada (el estado se guarda en Drive en
+cada época como `estado_entrenamiento.pt` y se borra al terminar). En el
+03, si ResNet-50 ya había terminado y el corte fue en EfficientNet-B0,
+cambia la celda a `python entrenar_cu1.py --arquitecturas efficientnet_b0
+--reanudar` para no reentrenar la que ya está lista.
 
 ## 5. Qué te queda al final de cada notebook
 

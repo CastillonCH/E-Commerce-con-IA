@@ -193,6 +193,45 @@ def escribir_sql_registro(carpeta: Path, codigo: str, m: dict, hiperparametros: 
     return ruta
 
 
+NOMBRE_ESTADO = "estado_entrenamiento.pt"
+
+
+def guardar_estado(carpeta: Path, estado: dict) -> None:
+    """Estado COMPLETO al final de cada época (pesos, optimizador,
+    scheduler, historia, generadores aleatorios) para poder retomar con
+    --reanudar si se corta la corrida (Colab desconectado, apagón, reinicio).
+    Se escribe a un temporal y se renombra: un corte a mitad de la
+    escritura no deja un archivo roto."""
+    import torch
+
+    estado = {**estado, "rng": {"python": random.getstate(), "numpy": np.random.get_state(),
+                                "torch": torch.get_rng_state()}}
+    temporal = carpeta / (NOMBRE_ESTADO + ".tmp")
+    torch.save(estado, temporal)
+    temporal.replace(carpeta / NOMBRE_ESTADO)
+
+
+def cargar_estado(carpeta: Path) -> dict | None:
+    import torch
+
+    ruta = carpeta / NOMBRE_ESTADO
+    if not ruta.exists():
+        return None
+    # weights_only=False: es un archivo que escribió este mismo script en
+    # tu disco (incluye el estado de numpy, que no es un tensor); nunca
+    # cargues así un archivo de origen desconocido.
+    estado = torch.load(ruta, map_location="cpu", weights_only=False)
+    random.setstate(estado["rng"]["python"])
+    np.random.set_state(estado["rng"]["numpy"])
+    torch.set_rng_state(estado["rng"]["torch"])
+    print(f"[REANUDAR] Retomando desde el final de la época {estado['epoca']} ({ruta})", flush=True)
+    return estado
+
+
+def borrar_estado(carpeta: Path) -> None:
+    (carpeta / NOMBRE_ESTADO).unlink(missing_ok=True)
+
+
 def pesos_por_clase(etiquetas, potencia: float = 0.5) -> np.ndarray:
     """Peso (1/frecuencia)^potencia por clase, normalizado a media 1.
     potencia=0.5 (raíz) ayuda a las clases chicas sin sobrecorregir."""
