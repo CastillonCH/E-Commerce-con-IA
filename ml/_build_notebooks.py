@@ -232,8 +232,10 @@ def construir_03():
     md(nb, """\
 # 03 — CU1: ResNet-50 + EfficientNet-B0, y fusión imagen + texto
 
-Fine-tuning completo de ResNet-50 (cu1-resnet50-v1) y EfficientNet-B0
-(cu1-efficientnet-b0-v1) desde ImageNet. Meta (OE1): accuracy ≥ 0,80 y
+ResNet-50 (cu1-resnet50-v1) y EfficientNet-B0 (cu1-efficientnet-b0-v1)
+desde ImageNet con LP-FT: primero una sonda lineal (solo la última capa,
+con la red congelada; aparece como "época 0") y después fine-tuning
+completo con LR bajo. Meta (OE1): accuracy ≥ 0,80 y
 F1-macro ≥ 0,75 en el conjunto de prueba.
 
 Corre `entrenar_cu1.py` y después `evaluar_fusion.py`, que elige en

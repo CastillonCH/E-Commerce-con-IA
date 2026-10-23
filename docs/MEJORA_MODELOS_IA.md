@@ -80,8 +80,12 @@ entero: Relojes 15, Peluches 18, Fragancias 23, Balones 25, Bloques 27).
 - **BETO:** hasta 15 épocas con early stopping (paciencia 3), cabeza con
   LR 10x, pérdida con pesos por clase + label smoothing, weight decay,
   clipping, warmup + decaimiento lineal, fp16 en GPU, padding dinámico.
-- **ResNet-50 / EfficientNet-B0:** fine-tuning completo con LR
-  discriminativo, warmup + coseno, hasta 25 épocas (paciencia 5),
+- **ResNet-50 / EfficientNet-B0:** LP-FT — primero una sonda lineal
+  (solo la cabeza, sobre features congeladas, elegida en validación) y
+  después fine-tuning completo con LR bajo (5e-5 / 1e-4) igual para toda
+  la red. Un fine-tuning directo con la cabeza al azar (LR 10x) quedó
+  por debajo de la sonda lineal sola (ver sección 3). Warmup + coseno,
+  hasta 25 épocas (paciencia 5),
   TrivialAugmentWide + RandomErasing + degradación de resolución, label
   smoothing, pesos por clase, fp16 + channels_last, DataLoader con
   workers, checkpoint en disco en cada mejora.

@@ -3,10 +3,16 @@ EfficientNet-B0 (cu1-efficientnet-b0-v1), transfer learning desde ImageNet.
 
 Qué cambia respecto de la corrida anterior (ResNet-50 66% / EfficientNet
 59% de accuracy en test) y por qué:
-  - Fine-tuning COMPLETO con LR discriminativo (backbone bajo, cabeza 10x),
-    en vez de entrenar solo la última capa y después solo layer4 /
-    features.8 (en EfficientNet-B0, features.8 es apenas la conv 1x1 final:
-    el modelo casi no se adaptaba al dominio de productos).
+  - LP-FT (Kumar et al., 2022): primero una sonda lineal (solo la cabeza,
+    sobre features congeladas, elegida en validación) y DESPUÉS
+    fine-tuning COMPLETO con LR bajo e igual para toda la red. Antes se
+    entrenaba solo la última capa y después solo layer4 / features.8 (en
+    EfficientNet-B0 apenas la conv 1x1 final). Y un fine-tuning completo
+    con la cabeza al azar (LR 10x) quedó PEOR que la sonda lineal sola
+    (EfficientNet-B0: val F1 0.68 contra 0.70): los gradientes de una
+    cabeza aleatoria deforman las features de ImageNet. Partiendo de la
+    sonda, la época 0 ya vale lo que la sonda y el fine-tuning solo se
+    conserva si mejora el F1 de validación.
   - 1 época de warmup + decaimiento coseno (antes StepLR) y hasta 25
     épocas con early stopping (paciencia 5) sobre el F1-macro de validación.
   - Augmentación más fuerte (RandomResizedCrop, TrivialAugmentWide,
@@ -52,8 +58,8 @@ NORMALIZAR = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224,
 TRANSFORM_EVAL = transforms.Compose([transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(), NORMALIZAR])
 
 CONFIG_ARQUITECTURA = {
-    "resnet50": {"codigo": "cu1-resnet50-v1", "lr_backbone": 1e-4, "dim_embedding": 2048},
-    "efficientnet_b0": {"codigo": "cu1-efficientnet-b0-v1", "lr_backbone": 3e-4, "dim_embedding": 1280},
+    "resnet50": {"codigo": "cu1-resnet50-v1", "lr_backbone": 5e-5, "dim_embedding": 2048},
+    "efficientnet_b0": {"codigo": "cu1-efficientnet-b0-v1", "lr_backbone": 1e-4, "dim_embedding": 1280},
 }
 
 
@@ -116,6 +122,54 @@ def es_cabeza(nombre: str) -> bool:
     return nombre.startswith("fc.") or nombre.startswith("classifier.")
 
 
+def capa_cabeza(modelo: nn.Module, arquitectura: str) -> nn.Linear:
+    return modelo.fc if arquitectura == "resnet50" else modelo.classifier[1]
+
+
+def ajustar_sonda_lineal(modelo: nn.Module, cabeza: nn.Linear, train_loader, val_loader, pesos: torch.Tensor,
+                         disp: str, usar_amp: bool, pasos: int = 500) -> None:
+    """Fase LP de LP-FT: con el backbone congelado (y sin augmentación),
+    extrae las features que entran a la cabeza y entrena solo la cabeza,
+    con lote completo; se queda con el paso de mejor F1-macro de
+    validación. Barato: una sola pasada hacia adelante por train y val."""
+    capturas: list[torch.Tensor] = []
+    gancho = cabeza.register_forward_hook(lambda _m, entrada, _s: capturas.append(entrada[0].detach().float().cpu()))
+
+    def extraer(loader) -> tuple[torch.Tensor, torch.Tensor]:
+        capturas.clear()
+        etiquetas = []
+        modelo.eval()
+        with torch.no_grad():
+            for entradas, y in loader:
+                entradas = entradas.to(disp, non_blocking=True)
+                if usar_amp:
+                    entradas = entradas.to(memory_format=torch.channels_last)
+                with torch.autocast(device_type="cuda", enabled=usar_amp):
+                    modelo(entradas)
+                etiquetas.append(y)
+        return torch.cat(capturas), torch.cat(etiquetas)
+
+    try:
+        x_train, y_train = extraer(train_loader)
+        x_val, y_val = extraer(val_loader)
+    finally:
+        gancho.remove()
+    lineal = nn.Linear(x_train.shape[1], len(CLASES))
+    optimizador = torch.optim.AdamW(lineal.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterio = nn.CrossEntropyLoss(weight=pesos.cpu(), label_smoothing=0.1)
+    mejor_f1, mejor_estado = -1.0, None
+    for paso in range(1, pasos + 1):
+        optimizador.zero_grad(set_to_none=True)
+        criterio(lineal(x_train), y_train).backward()
+        optimizador.step()
+        if paso % 10 == 0:
+            with torch.no_grad():
+                f1 = metricas(y_val.tolist(), lineal(x_val).argmax(1).tolist())["f1_macro"]
+            if f1 > mejor_f1:
+                mejor_f1, mejor_estado = f1, {k: v.clone() for k, v in lineal.state_dict().items()}
+    cabeza.load_state_dict(mejor_estado)
+
+
 def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) -> dict:
     config = CONFIG_ARQUITECTURA[arquitectura]
     codigo = config["codigo"]
@@ -134,14 +188,18 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
 
     train_loader = cargador(train, TRANSFORM_TRAIN, True)
     val_loader, test_loader = cargador(val, TRANSFORM_EVAL, False), cargador(test, TRANSFORM_EVAL, False)
+    sonda_loader = cargador(train, TRANSFORM_EVAL, False)
 
     modelo = construir(arquitectura).to(disp)
     if usar_amp:
         modelo = modelo.to(memory_format=torch.channels_last)
     lr = args.lr_backbone or config["lr_backbone"]
+    # Con sonda lineal la cabeza ya está entrenada: misma LR para toda la
+    # red. Sin sonda (--sin-sonda) la cabeza parte al azar y va 10x.
+    mult_cabeza = 10 if args.sin_sonda else 1
     grupos = [
         {"params": [p for n, p in modelo.named_parameters() if not es_cabeza(n)], "lr": lr},
-        {"params": [p for n, p in modelo.named_parameters() if es_cabeza(n)], "lr": lr * 10},
+        {"params": [p for n, p in modelo.named_parameters() if es_cabeza(n)], "lr": lr * mult_cabeza},
     ]
     optimizador = torch.optim.AdamW(grupos, weight_decay=0.01)
     pasos_por_epoca = len(train_loader)
@@ -180,6 +238,15 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
         escalador.load_state_dict(estado["escalador"])
         historia, mejor_f1, mejor_estado, sin_mejora = estado["historia"], estado["mejor_f1"], estado["mejor_estado"], estado["sin_mejora"]
         epoca_inicial = estado["epoca"] + 1
+    elif not args.sin_sonda:
+        inicio = time.time()
+        ajustar_sonda_lineal(modelo, capa_cabeza(modelo, arquitectura), sonda_loader, val_loader, pesos, disp, usar_amp)
+        m_val, perdida_val, _ = evaluar(val_loader)
+        print(f"  [{arquitectura}] época 0 (sonda lineal) | val_loss={perdida_val:.4f} | val_acc={m_val['accuracy']:.4f} "
+              f"| val_f1={m_val['f1_macro']:.4f} | {time.time() - inicio:.0f}s", flush=True)
+        mejor_f1 = m_val["f1_macro"]
+        mejor_estado = {k: v.detach().cpu().clone() for k, v in modelo.state_dict().items()}
+        torch.save({"modelo": mejor_estado, "clases": CLASES, "arquitectura": arquitectura}, salida / "modelo.pt")
 
     for epoca in range(epoca_inicial, args.epocas + 1):
         if sin_mejora >= args.paciencia:
@@ -238,7 +305,8 @@ def entrenar_arquitectura(arquitectura: str, train, val, test, args, disp: str) 
     torch.save({"modelo": mejor_estado, "clases": CLASES, "arquitectura": arquitectura}, salida / "modelo.pt")
     np.save(salida / "probs_val.npy", probs_val)
     np.save(salida / "probs_test.npy", probs_test)
-    hiper = {"arquitectura": arquitectura, "lr_backbone": lr, "lr_cabeza": lr * 10, "batch": args.batch,
+    hiper = {"arquitectura": arquitectura, "lr_backbone": lr, "lr_cabeza": lr * mult_cabeza, "batch": args.batch,
+             "sonda_lineal_previa": not args.sin_sonda,
              "epocas_max": args.epocas, "epocas_corridas": len(historia["epoca"]), "paciencia": args.paciencia,
              "label_smoothing": 0.1, "scheduler": "warmup 1 época + coseno", "weight_decay": 0.01,
              "augmentacion": "RandomResizedCrop(0.35-1)+Flip+TrivialAugmentWide+RandomErasing+baja resolución aleatoria"}
@@ -260,7 +328,9 @@ def main() -> None:
     parser.add_argument("--epocas", type=int, default=25)
     parser.add_argument("--paciencia", type=int, default=5)
     parser.add_argument("--batch", type=int, default=32)
-    parser.add_argument("--lr-backbone", type=float, default=None, help="Por defecto 1e-4 (ResNet-50) / 3e-4 (EfficientNet-B0).")
+    parser.add_argument("--lr-backbone", type=float, default=None, help="Por defecto 5e-5 (ResNet-50) / 1e-4 (EfficientNet-B0).")
+    parser.add_argument("--sin-sonda", action="store_true",
+                        help="Sin la sonda lineal previa (fine-tuning directo con la cabeza al azar, como antes).")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--modo-rapido", action="store_true", help="Pocas imágenes y 1 época, solo para probar que corre.")
     parser.add_argument("--reanudar", action="store_true",
