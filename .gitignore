@@ -13,6 +13,18 @@
 # copia local del proyecto (rama NALDO) guardada dentro de esta carpeta
 /E-Commerce-con-IA/
 
+# archivos locales de asistentes de IA / editor: `next dev` crea
+# AGENTS.md y CLAUDE.md solo cuando lo ejecuta un asistente
+/AGENTS.md
+/CLAUDE.md
+/Agentes.md
+/.claude/
+
+# volcados y respaldos de la base de datos (pueden traer datos reales)
+*.dump
+*_dump.sql
+*.backup
+
 # testing
 /coverage
 /test-results
