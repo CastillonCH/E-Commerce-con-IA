@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { useCartStore } from "@/store/cart-store";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
@@ -18,10 +18,10 @@ export default function CartPage() {
           Tu carrito está vacío
         </p>
         <Link
-          href="/"
+          href="/productos"
           className="text-sm font-medium text-brand hover:underline"
         >
-          Volver a la tienda
+          Ver productos
         </Link>
       </div>
     );
@@ -29,6 +29,13 @@ export default function CartPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
+      <Link
+        href="/productos"
+        className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-brand"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Seguir comprando
+      </Link>
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Tu carrito</h1>
 
       <ul className="flex flex-col divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">

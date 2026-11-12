@@ -85,6 +85,29 @@ export async function listProducts(
   return rows.map(toProduct);
 }
 
+export interface MenuCategoria {
+  departamento: Departamento;
+  categoria: string;
+  total: number;
+}
+
+// Lo que necesita el mega menú: cuántos productos publicados hay por
+// categoría. Se agrega en SQL para no mandar el catálogo entero al
+// navegador en cada página — con miles de productos el menú pesa lo
+// mismo que con diez.
+export async function getMenuResumen(): Promise<MenuCategoria[]> {
+  const rows = await query<{ departamento: string; categoria: string; total: number }>(
+    `SELECT departamento, categoria_ia AS categoria, count(*)::int AS total
+       FROM v_productos_tienda
+      GROUP BY departamento, categoria_ia`,
+  );
+  return rows.map((row) => ({
+    departamento: row.departamento as Departamento,
+    categoria: row.categoria,
+    total: row.total,
+  }));
+}
+
 export async function getProductById(id: string): Promise<Product | null> {
   const row = await queryOne<ProductRow>(
     `SELECT * FROM v_productos_tienda WHERE id = $1`,
@@ -780,7 +803,8 @@ export interface DetectedDuplicate {
 }
 
 interface DuplicateRow {
-  id: number;
+  // bigint: node-postgres lo entrega como texto ("12"), no como número.
+  id: string;
   producto_a_id: string;
   producto_b_id: string;
   similitud_texto: number | null;
@@ -825,7 +849,9 @@ export async function listDetectedDuplicates(): Promise<DetectedDuplicate[]> {
     ]);
     if (!a || !b) continue; // alguno de los dos se borró de verdad (no pasa con el borrado lógico, pero por si acaso)
     resultado.push({
-      id: row.id,
+      // A número: resolveDuplicateAction lo valida con z.number() y, si
+      // llegaba "12" (texto), los dos botones fallaban con "Datos inválidos".
+      id: Number(row.id),
       a,
       b,
       similitudTexto: row.similitud_texto,

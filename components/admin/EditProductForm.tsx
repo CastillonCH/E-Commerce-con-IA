@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import { ProductImage } from "@/components/ui/ProductImage";
 import { useRouter } from "next/navigation";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -189,7 +189,7 @@ export function EditProductForm({
           </p>
           <div className="flex items-start gap-3">
             <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-              <Image
+              <ProductImage
                 src={product.imagen_url}
                 alt={product.nombre}
                 fill

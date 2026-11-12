@@ -35,9 +35,9 @@ export default async function AdminModelosPage() {
         </div>
         <a
           href="/api/admin/dataset-entrenamiento"
-          className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-black"
+          className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-black"
         >
-          <Download className="h-3.5 w-3.5" />
+          <Download className="h-4 w-4" />
           Exportar dataset para reentrenar
         </a>
       </div>
@@ -66,7 +66,7 @@ export default async function AdminModelosPage() {
                 ? "El servicio de IA está en modo demostración"
                 : "El servicio de IA está activo con modelos reales"}
           </p>
-          <p className="text-xs text-slate-600">
+          <p className="text-sm text-slate-600">
             {!salud
               ? "Revisa AI_SERVICE_URL en .env.local y que ai-service esté corriendo (ver ai-service/README.md)."
               : salud.modo === "demo"
@@ -78,11 +78,11 @@ export default async function AdminModelosPage() {
 
       {/* Tabla de modelos vs. metas del T1 */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
           Modelos registrados
         </h2>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
                 <th scope="col" className="px-4 py-3 font-medium">Código</th>
@@ -99,7 +99,7 @@ export default async function AdminModelosPage() {
                 const cumple = tieneMetricas && meta ? meta.cumple(modelo.metricas) : null;
                 return (
                   <tr key={modelo.codigo} className="border-b border-slate-100 text-slate-700 last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs">{modelo.codigo}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-sm">{modelo.codigo}</td>
                     <td className="px-4 py-3">{modelo.arquitectura}</td>
                     <td className="px-4 py-3">
                       <span
@@ -113,17 +113,29 @@ export default async function AdminModelosPage() {
                         {modelo.estado}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs">
-                      {tieneMetricas
-                        ? Object.entries(modelo.metricas)
-                            .map(([clave, valor]) => `${clave}: ${typeof valor === "number" ? valor.toFixed(3) : valor}`)
-                            .join(" · ")
-                        : "Sin entrenar todavía"}
+                    <td className="px-4 py-3">
+                      {tieneMetricas ? (
+                        <ul className="flex flex-wrap gap-1.5">
+                          {Object.entries(modelo.metricas).map(([clave, valor]) => (
+                            <li
+                              key={clave}
+                              className="rounded-md bg-slate-100 px-2 py-1 text-[13px] leading-tight text-slate-600"
+                            >
+                              {clave}{" "}
+                              <span className="font-semibold text-slate-900">
+                                {typeof valor === "number" ? valor.toFixed(3) : valor}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="text-slate-500">Sin entrenar todavía</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-xs">
+                    <td className="px-4 py-3">
                       {meta ? (
-                        <span className={cn("flex items-center gap-1", cumple ? "text-emerald-700" : "text-slate-500")}>
-                          {cumple !== null && (cumple ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />)}
+                        <span className={cn("flex items-start gap-1.5", cumple ? "text-emerald-700" : "text-slate-500")}>
+                          {cumple !== null && (cumple ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />)}
                           {meta.etiqueta}
                         </span>
                       ) : (
@@ -140,7 +152,7 @@ export default async function AdminModelosPage() {
 
       {/* Línea base del problema (T1 1.2.1) */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
           Línea base: categorización manual del vendedor
         </h2>
         {lineaBase.conCategoriaDelVendedor === 0 ? (
@@ -160,7 +172,7 @@ export default async function AdminModelosPage() {
 
       {/* Métricas de clasificación por modelo (revisiones) */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
           Revisión humana por modelo
         </h2>
         {metricasClasificacion.every((m) => m.fichasRevisadas === 0) ? (
@@ -181,7 +193,7 @@ export default async function AdminModelosPage() {
                   .filter((m) => m.fichasRevisadas > 0)
                   .map((m) => (
                     <tr key={m.modelo} className="border-b border-slate-100 text-slate-700 last:border-0">
-                      <td className="px-4 py-3 font-mono text-xs">{m.modelo}</td>
+                      <td className="px-4 py-3 font-mono text-sm">{m.modelo}</td>
                       <td className="px-4 py-3">{m.fichasRevisadas}</td>
                       <td className="px-4 py-3">{m.pctAcierto ?? "—"}%</td>
                       <td className="px-4 py-3">{m.minutosPromedioRevision ?? "—"} min</td>
@@ -195,7 +207,7 @@ export default async function AdminModelosPage() {
 
       {/* CU5 duplicados */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
           CU5 — Precisión de duplicados (meta OE3: ≥ 90%)
         </h2>
         {metricasDuplicados.verdaderosPositivos + metricasDuplicados.falsosPositivos === 0 ? (
@@ -228,7 +240,7 @@ function Tarjeta({
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <p className="text-xs text-slate-500">{etiqueta}</p>
+      <p className="text-sm text-slate-500">{etiqueta}</p>
       <p className={cn("mt-1 text-xl font-semibold", resaltado ? "text-emerald-700" : "text-slate-900")}>
         {valor}
       </p>

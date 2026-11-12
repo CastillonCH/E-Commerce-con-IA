@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { APP_CONFIG } from "@/lib/config";
 import { listProducts } from "@/lib/data/products-repo";
+import { CATEGORIAS_IA, DEPARTAMENTOS, catalogoHref } from "@/lib/taxonomy";
 
 // Dinámico a propósito: de lo contrario Next intenta generar este archivo
 // en build time, y entonces `npm run build` necesitaría DATABASE_URL
@@ -16,11 +17,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${APP_CONFIG.siteUrl}/ayuda`, changeFrequency: "monthly", priority: 0.3 },
   ];
 
+  const catalogRoutes: MetadataRoute.Sitemap = DEPARTAMENTOS.flatMap((departamento) => [
+    catalogoHref(departamento),
+    ...CATEGORIAS_IA[departamento].map((categoria) => catalogoHref(departamento, categoria)),
+  ]).map((path) => ({
+    url: `${APP_CONFIG.siteUrl}${path}`,
+    changeFrequency: "daily",
+    priority: 0.8,
+  }));
+
   const productRoutes: MetadataRoute.Sitemap = products.map((product) => ({
     url: `${APP_CONFIG.siteUrl}/productos/${product.id}`,
     changeFrequency: "weekly",
     priority: 0.7,
   }));
 
-  return [...staticRoutes, ...productRoutes];
+  return [...staticRoutes, ...catalogRoutes, ...productRoutes];
 }

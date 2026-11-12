@@ -6,7 +6,15 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
 
-  globalIgnores([".next/**", "out/**", "build/**", "coverage/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "coverage/**",
+    "next-env.d.ts",
+    // Otra copia del proyecto (rama NALDO) guardada dentro de esta carpeta.
+    "E-Commerce-con-IA/**",
+  ]),
 ]);
 
 export default eslintConfig;

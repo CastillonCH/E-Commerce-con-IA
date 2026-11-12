@@ -65,7 +65,7 @@ export function VendorApplications({ items }: { items: Vendedor[] }) {
                 type="button"
                 onClick={() => handleDecision(vendor, true)}
                 disabled={isProcessing}
-                className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-black disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-50"
               >
                 <Check className="h-3.5 w-3.5" />
                 Aprobar
@@ -74,7 +74,7 @@ export function VendorApplications({ items }: { items: Vendedor[] }) {
                 type="button"
                 onClick={() => handleDecision(vendor, false)}
                 disabled={isProcessing}
-                className="flex items-center gap-1.5 rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
               >
                 <X className="h-3.5 w-3.5" />
                 Rechazar

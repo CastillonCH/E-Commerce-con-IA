@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { ProductImage } from "@/components/ui/ProductImage";
 import { PackageSearch } from "lucide-react";
 import type { Order } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -44,7 +44,7 @@ export function OrderHistoryList({ orders }: { orders: Order[] }) {
             {order.items.map((item) => (
               <li key={item.productId} className="flex items-center gap-3">
                 <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                  <Image
+                  <ProductImage
                     src={item.imagen_url}
                     alt={item.nombre}
                     fill

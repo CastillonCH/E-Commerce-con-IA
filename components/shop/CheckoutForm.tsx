@@ -2,10 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { ProductImage } from "@/components/ui/ProductImage";
+import Link from "next/link";
 import { toast } from "sonner";
 import { CreditCard, Smartphone, Truck as TruckIcon } from "lucide-react";
-import type { PaymentMethod } from "@/types";
+import type { CartItem, PaymentMethod } from "@/types";
 import { useCartStore } from "@/store/cart-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import { formatCurrency, cn } from "@/lib/utils";
@@ -25,14 +26,20 @@ const PAYMENT_OPTIONS: {
 
 interface CheckoutFormProps {
   nombreInicial: string;
+  // "Comprar ahora": se paga solo este producto y el carrito no se toca.
+  compraDirecta?: CartItem;
 }
 
-export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
+export function CheckoutForm({ nombreInicial, compraDirecta }: CheckoutFormProps) {
   const router = useRouter();
   const mounted = useHasMounted();
-  const items = useCartStore((state) => state.items);
-  const totalPrice = useCartStore((state) => state.totalPrice());
+  const cartItems = useCartStore((state) => state.items);
   const clearCart = useCartStore((state) => state.clear);
+  const items = compraDirecta ? [compraDirecta] : cartItems;
+  const totalPrice = items.reduce(
+    (sum, item) => sum + item.product.precio * item.cantidad,
+    0,
+  );
 
   const [nombre, setNombre] = useState(nombreInicial);
   const [direccion, setDireccion] = useState("");
@@ -60,7 +67,7 @@ export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
       return;
     }
 
-    clearCart();
+    if (!compraDirecta) clearCart();
     router.push(`/checkout/confirmacion?pedido=${result.orderId}`);
   }
 
@@ -164,14 +171,27 @@ export function CheckoutForm({ nombreInicial }: CheckoutFormProps) {
       </div>
 
       <div className="h-fit rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">
-          Resumen del pedido
-        </h2>
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Resumen del pedido
+          </h2>
+          <Link
+            href={compraDirecta ? `/productos/${compraDirecta.product.id}` : "/carrito"}
+            className="text-sm font-medium text-brand hover:underline"
+          >
+            {compraDirecta ? "Cambiar" : "Editar"}
+          </Link>
+        </div>
+        {compraDirecta && (
+          <p className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Compra directa: solo se paga este producto. Tu carrito no cambia.
+          </p>
+        )}
         <ul className="flex flex-col gap-3">
           {items.map(({ product, cantidad }) => (
             <li key={product.id} className="flex items-center gap-3">
               <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                <Image
+                <ProductImage
                   src={product.imagen_url}
                   alt={product.nombre}
                   fill

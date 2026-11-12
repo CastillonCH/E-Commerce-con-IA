@@ -93,7 +93,7 @@ export function AdminOrdersTable({ orders }: { orders: Order[] }) {
                       )
                     }
                     aria-label={`Cambiar estado del pedido ${order.id}`}
-                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-slate-900 disabled:opacity-50"
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 outline-none focus:border-slate-900 disabled:opacity-50"
                   >
                     {STATUS_OPTIONS.map((status) => (
                       <option key={status} value={status}>

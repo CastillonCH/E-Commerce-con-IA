@@ -1,8 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { ChevronRight } from "lucide-react";
-import type { Product } from "@/types";
-import { CATEGORIAS_IA, type Departamento } from "@/lib/taxonomy";
+import type { MenuCategoria } from "@/lib/data/products-repo";
+import { CATEGORIAS_IA, catalogoHref, type Departamento } from "@/lib/taxonomy";
+import { DEPARTMENT_ICONS } from "@/components/shop/department-icons";
 import { cn } from "@/lib/utils";
 
 export type MegaMenuAlign = "left" | "center" | "right";
@@ -13,98 +13,116 @@ const ALIGN_CLASSES: Record<MegaMenuAlign, string> = {
   right: "right-0",
 };
 
+// Solo enlaces a categorías, nunca productos ni marcas: así el menú se ve
+// igual con 3 productos que con 3000. Los productos se ven en la página
+// de la categoría, con filtros y paginación.
 export function DepartmentMegaMenu({
   departamento,
-  products,
+  resumen,
   align = "center",
 }: {
   departamento: Departamento;
-  products: Product[];
+  resumen: MenuCategoria[];
   align?: MegaMenuAlign;
 }) {
-  const categorias = CATEGORIAS_IA[departamento];
-  const departamentoHref = `/?departamento=${encodeURIComponent(departamento)}`;
+  const Icon = DEPARTMENT_ICONS[departamento];
+  const departamentoHref = catalogoHref(departamento);
+  const categorias = CATEGORIAS_IA[departamento].map((categoria) => {
+    const info = resumen.find(
+      (r) => r.departamento === departamento && r.categoria === categoria,
+    );
+    return { categoria, total: info?.total ?? 0 };
+  });
 
   return (
-    <div
-      className={cn(
-        "absolute top-full z-50 pt-3",
-        ALIGN_CLASSES[align],
-      )}
-    >
-      <div className="animate-[scale-in_0.15s_ease-out] flex gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-        {categorias.map((categoria) => {
-          const productos = products
-            .filter(
-              (p) =>
-                p.departamento === departamento && p.categoria_ia === categoria,
-            )
-            .slice(0, 2);
-          const categoriaHref = `${departamentoHref}&categoria=${encodeURIComponent(categoria)}`;
+    <div className={cn("absolute top-full z-50 pt-3", ALIGN_CLASSES[align])}>
+      <div className="w-[min(46rem,calc(100vw-2rem))] animate-[scale-in_0.15s_ease-out] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
+          <Link
+            href={departamentoHref}
+            className="group/dep flex items-center gap-3"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="text-lg font-bold text-slate-900 group-hover/dep:text-brand">
+              {departamento}
+            </span>
+          </Link>
+          <Link
+            href={departamentoHref}
+            className="flex items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
+          >
+            Ver todo {departamento}
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
 
-          return (
-            <div key={categoria} className="w-40 shrink-0">
-              <Link
-                href={categoriaHref}
-                className="mb-3 block text-xs font-semibold uppercase leading-tight tracking-wide text-slate-500 hover:text-brand"
-              >
-                {categoria}
-              </Link>
-              <ul className="flex flex-col gap-3">
-                {productos.map((producto) => (
-                  <li key={producto.id}>
+        <div className="grid grid-cols-4 gap-6 p-6">
+          {categorias.map(({ categoria, total }) => {
+            const categoriaHref = catalogoHref(departamento, categoria);
+            return (
+              <div key={categoria} className="min-w-0">
+                <Link
+                  href={categoriaHref}
+                  className="block text-sm font-bold leading-tight text-slate-900 hover:text-brand"
+                >
+                  {categoria}
+                </Link>
+                <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+                  <li>
                     <Link
-                      href={`/productos/${producto.id}`}
-                      className="group/item flex items-center gap-2.5"
+                      href={categoriaHref}
+                      className="font-semibold text-slate-800 hover:text-brand"
                     >
-                      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                        <Image
-                          src={producto.imagen_url}
-                          alt={producto.nombre}
-                          fill
-                          sizes="40px"
-                          className="object-cover transition-transform duration-200 group-hover/item:scale-105"
-                        />
-                      </div>
-                      <span className="line-clamp-2 text-xs font-medium leading-tight text-slate-700 group-hover/item:text-brand">
-                        {producto.nombre}
-                      </span>
+                      Ver todo
+                      {total > 0 && (
+                        <span className="ml-1 font-normal text-slate-500">({total})</span>
+                      )}
                     </Link>
                   </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+                  {total === 0 && (
+                    <li className="text-xs text-slate-500">Pronto más productos</li>
+                  )}
+                </ul>
+              </div>
+            );
+          })}
 
-        <div className="w-40 shrink-0 border-l border-slate-100 pl-6">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Explora
-          </p>
-          <ul className="flex flex-col gap-2.5 text-sm">
-            <li>
-              <Link
-                href={departamentoHref}
-                className="flex items-center gap-1 font-medium text-slate-800 hover:text-brand"
-              >
-                Ver todo
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            </li>
-            <li>
-              <Link
-                href={`${departamentoHref}&nuevo=1`}
-                className="text-slate-600 hover:text-brand"
-              >
-                Novedades
-              </Link>
-            </li>
-            <li>
-              <Link href="/ayuda" className="text-slate-600 hover:text-brand">
-                Envíos y devoluciones
-              </Link>
-            </li>
-          </ul>
+          <div className="min-w-0 border-l border-slate-100 pl-6">
+            <p className="text-sm font-bold text-slate-900">Explora</p>
+            <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+              <li>
+                <Link
+                  href={`${departamentoHref}?ofertas=1`}
+                  className="text-slate-600 hover:text-brand"
+                >
+                  Ofertas
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`${departamentoHref}?orden=nuevos`}
+                  className="text-slate-600 hover:text-brand"
+                >
+                  Novedades
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`${departamentoHref}?orden=valorados`}
+                  className="text-slate-600 hover:text-brand"
+                >
+                  Mejor valorados
+                </Link>
+              </li>
+              <li>
+                <Link href="/ayuda" className="text-slate-600 hover:text-brand">
+                  Envíos y devoluciones
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

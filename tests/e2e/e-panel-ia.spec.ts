@@ -113,7 +113,9 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await page.getByRole("button", { name: "Ir a Revisión de IA" }).click();
     await page.waitForURL(/admin\/productos$/);
 
-    await page.goto("/api/auth/logout", { waitUntil: "networkidle" }).catch(() => {});
+    // POST, como el botón real: /api/auth/logout no acepta GET (un goto
+    // devolvía 405 y la página de error de Chrome cortaba el goto siguiente).
+    await page.request.post("/api/auth/logout");
     await page.goto("/admin/login");
     await page.locator("#email").fill("admin@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");
@@ -166,7 +168,7 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await expect(page.getByText(/No se pudo contactar al servicio de IA/)).toBeVisible();
     await expect(page.getByText("Producto guardado — queda en revisión antes de publicarse.")).toBeVisible();
 
-    await page.goto("/api/auth/logout").catch(() => {});
+    await page.request.post("/api/auth/logout");
     await page.goto("/admin/login");
     await page.locator("#email").fill("admin@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");

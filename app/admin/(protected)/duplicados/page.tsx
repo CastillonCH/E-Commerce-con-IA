@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { ProductImage } from "@/components/ui/ProductImage";
 import { listDetectedDuplicates, listPossibleDuplicates } from "@/lib/data/products-repo";
 import { DuplicatesList } from "@/components/admin/DuplicatesList";
 import { formatCurrency } from "@/lib/utils";
@@ -33,10 +33,10 @@ export default async function AdminDuplicatesPage() {
 
       {respaldoRelevante.length > 0 && (
         <div>
-          <h2 className="mb-1 text-sm font-semibold text-slate-900">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">
             Respaldo sin IA
           </h2>
-          <p className="mb-3 text-xs text-slate-500">
+          <p className="mb-3 text-sm text-slate-500">
             Estos productos todavía no tienen embeddings guardados (el
             servicio de IA puede estar en modo demostración, o no se
             reanalizaron) — esta comparación es solo por similitud de texto
@@ -48,14 +48,14 @@ export default async function AdminDuplicatesPage() {
                 key={`${pair.a.id}-${pair.b.id}`}
                 className="rounded-xl border border-dashed border-slate-300 bg-white p-4"
               >
-                <p className="mb-3 text-xs font-medium text-slate-500">
+                <p className="mb-3 text-sm font-medium text-slate-500">
                   {Math.round(pair.score * 100)}% de similitud de texto · {pair.a.marca}
                 </p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[pair.a, pair.b].map((product) => (
                     <div key={product.id} className="flex items-center gap-3 rounded-lg border border-slate-100 p-3">
                       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                        <Image src={product.imagen_url} alt={product.nombre} fill sizes="48px" className="object-cover" />
+                        <ProductImage src={product.imagen_url} alt={product.nombre} fill sizes="48px" className="object-cover" />
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900">{product.nombre}</p>

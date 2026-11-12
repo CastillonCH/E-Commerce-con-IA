@@ -12,39 +12,28 @@ import {
   X,
   LogOut,
   LayoutDashboard,
-  Smartphone,
-  Sofa,
-  Shirt,
-  Dumbbell,
-  Sparkles,
-  Blocks,
-  ShoppingBasket,
-  type LucideIcon,
 } from "lucide-react";
-import type { Product } from "@/types";
-import { DEPARTAMENTOS, type Departamento } from "@/lib/taxonomy";
+import type { MenuCategoria } from "@/lib/data/products-repo";
+import {
+  CATEGORIAS_IA,
+  DEPARTAMENTOS,
+  catalogoHref,
+  type Departamento,
+} from "@/lib/taxonomy";
 import type { Session } from "@/lib/auth";
 import { useCartStore } from "@/store/cart-store";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import { cn } from "@/lib/utils";
 import { DepartmentMegaMenu } from "@/components/shop/DepartmentMegaMenu";
-
-const DEPARTMENT_ICONS: Record<Departamento, LucideIcon> = {
-  Electrónica: Smartphone,
-  Hogar: Sofa,
-  Moda: Shirt,
-  Deportes: Dumbbell,
-  Belleza: Sparkles,
-  Juguetes: Blocks,
-  Supermercado: ShoppingBasket,
-};
+import { DEPARTMENT_ICONS } from "@/components/shop/department-icons";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 interface NavbarProps {
   session: Session | null;
-  products: Product[];
+  menu: MenuCategoria[];
 }
 
-export function Navbar({ session, products }: NavbarProps) {
+export function Navbar({ session, menu }: NavbarProps) {
   const totalItems = useCartStore((state) => state.totalItems());
   const mounted = useHasMounted();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -111,7 +100,7 @@ export function Navbar({ session, products }: NavbarProps) {
                 }}
               >
                 <Link
-                  href={`/?departamento=${departamento}`}
+                  href={catalogoHref(departamento)}
                   onClick={() => setOpenDept(null)}
                   aria-haspopup="true"
                   aria-expanded={isOpen}
@@ -128,7 +117,7 @@ export function Navbar({ session, products }: NavbarProps) {
                 {isOpen && (
                   <DepartmentMegaMenu
                     departamento={departamento}
-                    products={products}
+                    resumen={menu}
                     align={align}
                   />
                 )}
@@ -153,6 +142,7 @@ export function Navbar({ session, products }: NavbarProps) {
         </form>
 
         <div className="flex shrink-0 items-center gap-1">
+          <ThemeToggle />
           <div
             className="relative"
             onBlur={(event) => {
@@ -259,7 +249,7 @@ export function Navbar({ session, products }: NavbarProps) {
             aria-label="Carrito"
           >
             <ShoppingCart className="h-5 w-5" />
-            {mounted && totalItems > 0 && (
+            {mounted && session && totalItems > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[11px] font-semibold text-white ring-2 ring-white">
                 {totalItems}
               </span>
@@ -273,22 +263,44 @@ export function Navbar({ session, products }: NavbarProps) {
           <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Categorías
           </p>
-          <div className="mb-3 grid grid-cols-2 gap-1">
+          <ul className="mb-3 flex flex-col">
             {DEPARTAMENTOS.map((departamento) => {
               const Icon = DEPARTMENT_ICONS[departamento];
               return (
-                <Link
-                  key={departamento}
-                  href={`/?departamento=${departamento}`}
-                  onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <Icon className="h-4 w-4 text-slate-500" />
-                  {departamento}
-                </Link>
+                <li key={departamento}>
+                  <details className="group/dep">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                      <Icon className="h-4 w-4 text-slate-500" />
+                      {departamento}
+                      <ChevronDown className="ml-auto h-4 w-4 text-slate-400 transition-transform group-open/dep:rotate-180" />
+                    </summary>
+                    <ul className="mb-1 ml-8 flex flex-col border-l border-slate-100 pl-3">
+                      <li>
+                        <Link
+                          href={catalogoHref(departamento)}
+                          onClick={() => setMobileOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-brand"
+                        >
+                          Ver todo {departamento}
+                        </Link>
+                      </li>
+                      {CATEGORIAS_IA[departamento].map((categoria) => (
+                        <li key={categoria}>
+                          <Link
+                            href={catalogoHref(departamento, categoria)}
+                            onClick={() => setMobileOpen(false)}
+                            className="block py-1.5 text-sm text-slate-600 hover:text-brand"
+                          >
+                            {categoria}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
               );
             })}
-          </div>
+          </ul>
           <div className="flex flex-col gap-1 border-t border-slate-100 pt-2">
             <Link
               href="/ayuda"

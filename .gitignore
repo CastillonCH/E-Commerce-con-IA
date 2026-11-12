@@ -10,6 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
+# copia local del proyecto (rama NALDO) guardada dentro de esta carpeta
+/E-Commerce-con-IA/
+
 # testing
 /coverage
 /test-results

@@ -34,7 +34,7 @@ const TOPICS: SupportTopic[] = [
     label: "Ver ofertas y descuentos",
     icon: Gift,
     kind: "navigate",
-    href: "/#catalogo",
+    href: "/productos?ofertas=1",
     whatsappMessage: "Hola, quiero saber sobre las ofertas del día.",
   },
   {

@@ -1,28 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { toast } from "sonner";
+import { ProductImage } from "@/components/ui/ProductImage";
 import { ShoppingCart, Star, Truck } from "lucide-react";
 import type { Product } from "@/types";
 import { discountPercent, formatCurrency } from "@/lib/utils";
-import { useCartStore } from "@/store/cart-store";
+import { useAddToCart } from "@/components/shop/ShopSessionProvider";
 import { Button } from "@/components/ui/Button";
 
 export function ProductCard({ product }: { product: Product }) {
-  const addItem = useCartStore((state) => state.addItem);
+  const addToCart = useAddToCart();
   const discount = discountPercent(product.precio, product.precioOriginal);
-
-  function handleAddToCart() {
-    addItem(product);
-    toast.success(`${product.nombre} añadido al carrito`);
-  }
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all hover:-translate-y-0.5 hover:shadow-lg">
       <Link href={`/productos/${product.id}`} className="flex flex-1 flex-col">
         <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
-          <Image
+          <ProductImage
             src={product.imagen_url}
             alt={product.nombre}
             fill
@@ -32,7 +26,7 @@ export function ProductCard({ product }: { product: Product }) {
 
           <div className="absolute left-2 top-2 flex flex-col gap-1.5">
             {discount && (
-              <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-slate-950">
+              <span className="rounded-full bg-orange-500 px-2 py-1 text-xs font-bold text-[#020617]">
                 -{discount}%
               </span>
             )}
@@ -92,7 +86,7 @@ export function ProductCard({ product }: { product: Product }) {
 
       <div className="p-4 pt-3">
         <Button
-          onClick={handleAddToCart}
+          onClick={() => addToCart(product)}
           disabled={product.stock === 0}
           className="w-full"
         >

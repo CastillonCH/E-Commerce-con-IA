@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { ProductImage } from "@/components/ui/ProductImage";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Star, Truck, ShieldCheck } from "lucide-react";
@@ -82,7 +82,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       />
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-10 px-4 py-10 sm:px-6 lg:grid-cols-2 lg:py-14">
         <div className="relative mx-auto aspect-square w-full max-w-md overflow-hidden rounded-2xl bg-slate-100">
-          <Image
+          <ProductImage
             src={product.imagen_url}
             alt={product.nombre}
             fill
@@ -91,7 +91,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             priority
           />
           {discount && (
-            <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-bold text-slate-950">
+            <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-bold text-[#020617]">
               -{discount}%
             </span>
           )}

@@ -30,7 +30,7 @@ export function HeroSection() {
               Conoce más
             </Link>
             <Link
-              href="#catalogo"
+              href="/productos"
               className="flex items-center gap-2 rounded-full border border-slate-900 bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-900 hover:text-white"
             >
               Comprar

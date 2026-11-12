@@ -545,6 +545,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
         );
         expect(par).toBeDefined();
         expect(par!.estado).toBe("pendiente");
+        // duplicados_detectados.id es bigint (llega como texto de pg): tiene
+        // que salir como número, o resolveDuplicateAction (z.number()) lo
+        // rechaza con "Datos inválidos" y los botones de /admin/duplicados
+        // no hacen nada.
+        expect(typeof par!.id).toBe("number");
 
         expect(await resolveDuplicate(par!.id, "confirmado", "admin@novastore.pe")).toBe(true);
         // Ya resuelto: no se puede volver a resolver.

@@ -1,11 +1,82 @@
 @import "tailwindcss";
 
+/* Modo oscuro por clase (<html class="dark">), no por media query: el
+   usuario lo elige con ThemeToggle y se guarda en localStorage. El script
+   de app/layout.tsx aplica la clase antes de pintar para que no parpadee. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
   --color-brand: #1428a0;
   --color-brand-hover: #0f1f7a;
   color-scheme: light;
+}
+
+/* En vez de repetir dark:... en cada componente, en modo oscuro se
+   redefine la paleta: "white" pasa a ser la superficie de las tarjetas,
+   la escala slate se invierte (slate-900 = texto claro, slate-100 =
+   relleno oscuro) y los tintes suaves (red-50, blue-50...) se vuelven
+   tintes oscuros. Así todo lo que ya usa esas clases se adapta solo.
+   Consecuencia: en oscuro, "text-white" sobre un botón de color es texto
+   oscuro (botones claros con texto oscuro), y bg-slate-900 es un botón
+   claro — ambos con buen contraste. Para un blanco literal en los dos
+   temas, usar text-[#fff]. */
+html.dark {
+  color-scheme: dark;
+  --background: #0b1220;
+  --foreground: #e2e8f0;
+  --color-brand: #8fa0ff;
+  --color-brand-hover: #b0bcff;
+
+  --color-white: #111a2e;
+  --color-black: #ffffff;
+
+  --color-slate-50: #0b1220;
+  --color-slate-100: #1a2438;
+  --color-slate-200: #26324a;
+  --color-slate-300: #334160;
+  --color-slate-400: #6b7a99;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #a9b6cb;
+  --color-slate-700: #c3cddc;
+  --color-slate-800: #dbe3ee;
+  --color-slate-900: #eef2f8;
+  --color-slate-950: #f8fafc;
+
+  --color-red-50: #2a1418;
+  --color-red-200: #5c2a30;
+  --color-red-300: #7a3a40;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+
+  --color-orange-50: #2b1a0e;
+
+  --color-amber-50: #2b2210;
+  --color-amber-200: #5a4516;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+
+  --color-green-50: #0f2a1c;
+  --color-green-100: #143822;
+  --color-green-600: #4ade80;
+  --color-green-700: #4ade80;
+  --color-green-800: #86efac;
+
+  --color-emerald-50: #0d2a22;
+  --color-emerald-100: #113a2e;
+  --color-emerald-200: #1b4d3e;
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #6ee7b7;
+
+  --color-blue-50: #101c3a;
+  --color-blue-100: #16264d;
+  --color-blue-600: #60a5fa;
+  --color-blue-700: #93c5fd;
+
+  --color-sky-100: #0f2a3d;
+  --color-sky-700: #7dd3fc;
 }
 
 @theme inline {

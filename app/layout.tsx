@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { ThemedToaster, THEME_INIT_SCRIPT } from "@/components/ui/ThemeToggle";
 import { APP_CONFIG } from "@/lib/config";
 import "./globals.css";
 
@@ -32,7 +32,12 @@ export default function RootLayout({
     <html
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // El script de abajo agrega la clase "dark" antes de hidratar.
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col bg-slate-50 text-slate-900">
         <a
           href="#main-content"
@@ -41,7 +46,7 @@ export default function RootLayout({
           Saltar al contenido
         </a>
         {children}
-        <Toaster richColors position="top-right" />
+        <ThemedToaster />
       </body>
     </html>
   );

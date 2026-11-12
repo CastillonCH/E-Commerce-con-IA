@@ -23,3 +23,31 @@ export const CATEGORIAS_IA: Record<Departamento, readonly string[]> = {
   Juguetes: ["Bloques de construcción", "Peluches", "Vehículos de juguete"],
   Supermercado: ["Bebidas", "Abarrotes y snacks", "Limpieza del hogar"],
 };
+
+// Mismo criterio que la columna `slug` de departamentos/categorias en la
+// base ("Audio y audífonos" → "audio-y-audifonos"): sin tildes, minúsculas
+// y guiones. Las URLs del catálogo se arman con esto, no con el nombre.
+export function slugify(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function departamentoFromSlug(slug: string): Departamento | null {
+  return DEPARTAMENTOS.find((d) => slugify(d) === slug) ?? null;
+}
+
+export function categoriaFromSlug(
+  departamento: Departamento,
+  slug: string,
+): string | null {
+  return CATEGORIAS_IA[departamento].find((c) => slugify(c) === slug) ?? null;
+}
+
+export function catalogoHref(departamento: string, categoria?: string): string {
+  const base = `/categoria/${slugify(departamento)}`;
+  return categoria ? `${base}/${slugify(categoria)}` : base;
+}

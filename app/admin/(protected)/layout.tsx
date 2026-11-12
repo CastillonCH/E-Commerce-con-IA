@@ -11,11 +11,13 @@ export default async function AdminLayout({
   if (!session) redirect("/admin/login");
 
   return (
-    <div className="flex flex-1">
+    // En escritorio la barra lateral queda fija (sticky, alto de pantalla)
+    // y solo se desplaza <main>; en celular pasa a ser un menú deslizable.
+    <div className="flex flex-1 flex-col lg:flex-row">
       <AdminSidebar session={session} />
       <main
         id="main-content"
-        className="flex-1 overflow-x-hidden bg-slate-50 p-6 sm:p-8"
+        className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 sm:p-6 lg:p-8"
       >
         {children}
       </main>

@@ -51,7 +51,8 @@ export async function proxy(request: NextRequest) {
 
   if (!session) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
+    // Con la query: así /checkout?producto=1&cantidad=2 vuelve a esa compra.
+    loginUrl.searchParams.set("from", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -59,5 +60,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/perfil/:path*", "/checkout"],
+  matcher: ["/admin/:path*", "/perfil/:path*", "/checkout", "/carrito"],
 };

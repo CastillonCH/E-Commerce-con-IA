@@ -1,9 +1,11 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { HeroSection } from "@/components/shop/HeroSection";
 import { BenefitsStrip } from "@/components/shop/BenefitsStrip";
 import { ProductGrid } from "@/components/shop/ProductGrid";
 import { ProductCarousel } from "@/components/shop/ProductCarousel";
 import { listOfertas, listNuevos } from "@/lib/data/products-repo";
+import { catalogoHref, departamentoFromSlug, slugify, CATEGORIAS_IA } from "@/lib/taxonomy";
 
 interface HomeProps {
   searchParams: Promise<{
@@ -17,6 +19,16 @@ interface HomeProps {
 
 export default async function Home({ searchParams }: HomeProps) {
   const { q, departamento, categoria, nuevo, page } = await searchParams;
+
+  // Los enlaces viejos (/?departamento=Moda&categoria=...) ahora viven en
+  // /categoria/moda/... — con filtros, orden y paginación propios.
+  if (departamento && !q) {
+    const dep = departamentoFromSlug(slugify(departamento));
+    if (dep) {
+      const cat = CATEGORIAS_IA[dep].find((c) => c === categoria);
+      redirect(catalogoHref(dep, cat));
+    }
+  }
   const soloNuevos = nuevo === "1";
   const currentPage = Math.max(1, Number(page) || 1);
 
@@ -42,12 +54,12 @@ export default async function Home({ searchParams }: HomeProps) {
           <ProductCarousel
             title="Ofertas destacadas"
             products={ofertas}
-            viewAllHref="/#catalogo"
+            viewAllHref="/productos?ofertas=1"
           />
           <ProductCarousel
             title="Recién llegados"
             products={nuevos}
-            viewAllHref="/?nuevo=1"
+            viewAllHref="/productos?orden=nuevos"
           />
         </>
       )}

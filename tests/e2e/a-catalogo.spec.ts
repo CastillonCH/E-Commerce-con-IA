@@ -15,10 +15,29 @@ test.describe("a. Catálogo", () => {
     await expect(page.getByText("Sofá Modular 3 Cuerpos")).toBeVisible();
   });
 
-  test("filtrar por departamento usa el parámetro `departamento`", async ({ page }) => {
+  test("los enlaces viejos /?departamento= redirigen a la página del departamento", async ({ page }) => {
     await page.goto("/?departamento=Moda");
-    await expect(page).toHaveURL(/departamento=Moda/);
-    await expect(page.getByRole("heading", { name: "Moda" })).toBeVisible();
+    await expect(page).toHaveURL(/\/categoria\/moda$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Moda" })).toBeVisible();
+  });
+
+  test("la página de categoría filtra por marca y ordena por precio", async ({ page }) => {
+    await page.goto("/categoria/electronica/audio-y-audifonos");
+    await expect(page.getByRole("heading", { level: 1, name: "Audio y audífonos" })).toBeVisible();
+    await expect(page.getByText("Audífonos Inalámbricos Pro").first()).toBeVisible();
+
+    await page.getByLabel("Ordenar por:").selectOption("precio-desc");
+    await expect(page).toHaveURL(/orden=precio-desc/);
+
+    await page.goto("/categoria/electronica/audio-y-audifonos?marca=NoExiste");
+    await expect(page.getByText("Ningún producto coincide con los filtros")).toBeVisible();
+  });
+
+  // Con loading.tsx la respuesta ya empezó a transmitirse (200) cuando la
+  // página llama a notFound(), así que se comprueba lo que se muestra.
+  test("una categoría que no existe muestra la página 404", async ({ page }) => {
+    await page.goto("/categoria/electronica/no-existe");
+    await expect(page.getByText("This page could not be found.")).toBeVisible();
   });
 
   test("la página de un producto muestra su detalle y productos relacionados", async ({ page }) => {

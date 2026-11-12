@@ -25,7 +25,9 @@ export default defineConfig({
     // inestables, así que se corren secuencialmente.
     fileParallelism: false,
     include: ["**/*.test.{ts,tsx}"],
-    exclude: ["node_modules", "tests/e2e/**"],
+    // E-Commerce-con-IA/: otra copia del proyecto (rama NALDO) guardada
+    // dentro de esta carpeta en la PC local — no es parte de este código.
+    exclude: ["node_modules", "tests/e2e/**", "E-Commerce-con-IA/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

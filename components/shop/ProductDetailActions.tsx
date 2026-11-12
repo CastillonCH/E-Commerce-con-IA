@@ -2,26 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Minus, Plus, ShoppingCart } from "lucide-react";
 import type { Product } from "@/types";
-import { useCartStore } from "@/store/cart-store";
+import { useAddToCart, useShopSession } from "@/components/shop/ShopSessionProvider";
 import { Button } from "@/components/ui/Button";
 
 export function ProductDetailActions({ product }: { product: Product }) {
   const router = useRouter();
-  const addItem = useCartStore((state) => state.addItem);
+  const addToCart = useAddToCart();
+  const session = useShopSession();
   const [cantidad, setCantidad] = useState(1);
   const agotado = product.stock === 0;
 
-  function addToCart() {
-    addItem(product, cantidad);
-    toast.success(`${product.nombre} añadido al carrito`);
-  }
-
+  // Compra directa: va al checkout solo con este producto y la cantidad
+  // elegida, SIN agregarlo al carrito (para eso está "Añadir al carrito").
+  // Sin sesión, pasa antes por el login y vuelve a esa misma compra.
   function comprarAhora() {
-    addToCart();
-    router.push("/checkout");
+    const destino = `/checkout?producto=${product.id}&cantidad=${cantidad}`;
+    router.push(session ? destino : `/login?from=${encodeURIComponent(destino)}`);
   }
 
   return (
@@ -58,7 +56,7 @@ export function ProductDetailActions({ product }: { product: Product }) {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
-          onClick={addToCart}
+          onClick={() => addToCart(product, cantidad)}
           disabled={agotado}
           variant="outline"
           className="flex-1"
