@@ -3,10 +3,11 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Copy, KeyRound, Loader2, UserPlus } from "lucide-react";
-import type { MiembroPersonal, RolPersonal } from "@/lib/data/users-repo";
+import type { MiembroPersonal, ModoCarga, RolPersonal } from "@/lib/data/users-repo";
 import {
   crearMiembroAction,
   cambiarActivoAction,
+  cambiarModoCargaAction,
   cambiarRolAction,
   restablecerPasswordAction,
 } from "@/app/admin/(protected)/personal/actions";
@@ -20,12 +21,25 @@ const ETIQUETA_ROL: Record<RolPersonal, string> = {
   CATALOGO: "Catálogo",
 };
 
+const ETIQUETA_MODO: Record<ModoCarga, string> = {
+  asistido: "Con IA",
+  manual: "Sin IA (medición)",
+};
+
 function fecha(iso: string | null): string {
   if (!iso) return "Nunca";
   return new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export function PersonalPanel({ personal, miEmail }: { personal: MiembroPersonal[]; miEmail: string }) {
+export function PersonalPanel({
+  personal,
+  miEmail,
+  modoPorDefecto,
+}: {
+  personal: MiembroPersonal[];
+  miEmail: string;
+  modoPorDefecto: ModoCarga;
+}) {
   const [formAbierto, setFormAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [procesandoId, setProcesandoId] = useState<string | null>(null);
@@ -146,12 +160,13 @@ export function PersonalPanel({ personal, miEmail }: { personal: MiembroPersonal
       )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[880px] text-left text-sm">
           <caption className="sr-only">Cuentas del personal</caption>
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               <th scope="col" className="px-4 py-3 font-medium">Empleado</th>
               <th scope="col" className="px-4 py-3 font-medium">Rol</th>
+              <th scope="col" className="px-4 py-3 font-medium">Carga de productos</th>
               <th scope="col" className="px-4 py-3 font-medium">Último ingreso</th>
               <th scope="col" className="px-4 py-3 font-medium">Estado</th>
               <th scope="col" className="px-4 py-3 text-right font-medium">Acciones</th>
@@ -193,6 +208,25 @@ export function PersonalPanel({ personal, miEmail }: { personal: MiembroPersonal
                         <option value="ADMIN">{ETIQUETA_ROL.ADMIN}</option>
                       </select>
                     )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      aria-label={`Carga de productos de ${miembro.nombre}`}
+                      value={miembro.modoCarga ?? modoPorDefecto}
+                      disabled={procesando}
+                      onChange={(event) => {
+                        const modo = event.target.value as ModoCarga;
+                        ejecutar(
+                          miembro,
+                          () => cambiarModoCargaAction(miembro.id, modo),
+                          `${miembro.nombre} ahora carga ${modo === "asistido" ? "con IA" : "sin IA"}.`,
+                        );
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-900 disabled:opacity-50"
+                    >
+                      <option value="asistido">{ETIQUETA_MODO.asistido}</option>
+                      <option value="manual">{ETIQUETA_MODO.manual}</option>
+                    </select>
                   </td>
                   <td className="px-4 py-3 text-xs">{fecha(miembro.ultimoAcceso)}</td>
                   <td className="px-4 py-3">

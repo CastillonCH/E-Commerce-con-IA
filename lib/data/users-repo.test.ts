@@ -14,6 +14,8 @@ import {
   cambiarPassword,
   generarPasswordTemporal,
   PersonalError,
+  setMiembroModoCarga,
+  obtenerModoCarga,
 } from "@/lib/data/users-repo";
 
 // Pruebas de integración contra una PostgreSQL real (ver
@@ -150,6 +152,26 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const cliente = await findUserByEmail("jorge.salazar@gmail.com");
         await expect(setMiembroRol(cliente!.id, "ADMIN", ADMIN)).rejects.toThrow(/no es del personal/);
         expect((await findUserByEmail("jorge.salazar@gmail.com"))?.role).toBe("CLIENT");
+      });
+
+      it("el admin elige si un empleado carga con IA o sin IA (al instante)", async () => {
+        const email = `modo-${Date.now()}@novastore.pe`;
+        const { id } = await crearMiembroPersonal({ nombre: "Empleado Modo", email, rol: "CATALOGO" });
+
+        // Sin modo elegido: usa el valor por defecto del servidor.
+        expect(await obtenerModoCarga(email, "asistido")).toBe("asistido");
+        expect(await obtenerModoCarga(email, "manual")).toBe("manual");
+
+        await setMiembroModoCarga(id, "manual");
+        expect(await obtenerModoCarga(email, "asistido")).toBe("manual");
+        expect((await listPersonal()).find((m) => m.email === email)?.modoCarga).toBe("manual");
+
+        await setMiembroModoCarga(id, "asistido");
+        expect(await obtenerModoCarga(email, "manual")).toBe("asistido");
+
+        // Un cliente no tiene modo de carga.
+        const cliente = await findUserByEmail("jorge.salazar@gmail.com");
+        await expect(setMiembroModoCarga(cliente!.id, "manual")).rejects.toThrow(/no es del personal/);
       });
 
       it("nunca queda el sistema sin un administrador activo", async () => {

@@ -168,9 +168,11 @@ export default async function AdminModelosPage() {
           Tiempo de carga por ficha: sin IA vs con IA
         </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Desde que empieza a llenar el formulario hasta que guarda. Modo actual:{" "}
-          <strong>{modoCatalogo === "asistido" ? "asistido (la IA propone antes de guardar)" : "experimento (sin ver a la IA)"}</strong>
-          {" "}— se cambia con MODO_CATALOGO en .env.local.
+          Desde que empieza a llenar el formulario hasta que guarda. El modo de cada empleado
+          (con IA o sin IA) se elige en{" "}
+          <a href="/admin/personal" className="font-medium text-slate-900 underline">Personal</a>; quien no
+          tenga uno elegido carga{" "}
+          <strong>{modoCatalogo === "asistido" ? "con IA" : "sin IA"}</strong> (valor por defecto).
         </p>
         {!carga.manual && !carga.asistido ? (
           <EstadoVacio mensaje="Todavía no hay fichas cargadas con la medición de tiempo." />

@@ -8,6 +8,7 @@ import {
   restablecerPasswordMiembro,
   setMiembroActivo,
   setMiembroRol,
+  setMiembroModoCarga,
   PersonalError,
 } from "@/lib/data/users-repo";
 
@@ -67,6 +68,15 @@ export async function cambiarRolAction(id: string, rol: string): Promise<Persona
   const rolValido = rolSchema.safeParse(rol);
   if (!idSchema.safeParse(id).success || !rolValido.success) return { success: false, error: "Datos inválidos." };
   return ejecutar(() => setMiembroRol(id, rolValido.data, admin.email));
+}
+
+const modoSchema = z.enum(["asistido", "manual"]);
+
+export async function cambiarModoCargaAction(id: string, modo: string): Promise<PersonalActionResult> {
+  if (!(await requireAdmin())) return { success: false, error: "No autorizado." };
+  const modoValido = modoSchema.safeParse(modo);
+  if (!idSchema.safeParse(id).success || !modoValido.success) return { success: false, error: "Datos inválidos." };
+  return ejecutar(() => setMiembroModoCarga(id, modoValido.data));
 }
 
 export async function restablecerPasswordAction(id: string): Promise<PersonalActionResult> {

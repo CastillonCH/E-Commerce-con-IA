@@ -106,6 +106,10 @@ CREATE TABLE usuarios (
     creado_en       timestamptz  NOT NULL DEFAULT now(),
     actualizado_en  timestamptz  NOT NULL DEFAULT now(),
     debe_cambiar_password boolean NOT NULL DEFAULT false,
+    -- Solo personal: cargar productos con la IA ('asistido') o sin ella
+    -- ('manual', medición). NULL = valor por defecto del servidor. Lo elige
+    -- un ADMIN en /admin/personal (ver migración 005).
+    modo_carga      modo_carga,
     CONSTRAINT ck_usuarios_credenciales CHECK (
         (proveedor = 'credentials' AND password_hash IS NOT NULL) OR
         (proveedor = 'google'      AND google_sub    IS NOT NULL)
@@ -1380,6 +1384,15 @@ BEGIN
     EXCEPTION WHEN check_violation THEN NULL;
     END;
     RAISE NOTICE 'OK 15 carga asistida y tiempo de carga';
+END $$;
+
+-- 16. El modo de carga se elige por empleado (NULL = valor por defecto)
+DO $$
+BEGIN
+    UPDATE usuarios SET modo_carga = 'manual' WHERE email = 'catalogo@novastore.pe';
+    ASSERT (SELECT modo_carga FROM usuarios WHERE email = 'catalogo@novastore.pe') = 'manual';
+    ASSERT (SELECT modo_carga FROM usuarios WHERE email = 'admin@novastore.pe') IS NULL;
+    RAISE NOTICE 'OK 16 modo de carga por empleado';
 END $$;
 
 ROLLBACK;

@@ -82,4 +82,26 @@ test.describe("i. Carga asistida por la IA", () => {
     await expect(page.getByRole("heading", { name: "Tiempo de carga por ficha: sin IA vs con IA" })).toBeVisible();
     await expect(page.getByText(/Con IA \(\d+ fichas\)/)).toBeVisible();
   });
+
+  test("el admin cambia a un empleado a 'Sin IA' y el formulario cambia al instante, sin reiniciar", async ({ page, browser }) => {
+    await entrarComo(page, "admin@novastore.pe", /admin\/dashboard/);
+    const selector = page.getByLabel("Carga de productos de Analista de Catálogo");
+
+    await page.goto("/admin/personal");
+    await selector.selectOption("manual");
+    await expect(page.getByText("Analista de Catálogo ahora carga sin IA.")).toBeVisible();
+
+    const catalogo = await (await browser.newContext()).newPage();
+    await entrarComo(catalogo, "catalogo@novastore.pe", /admin\/productos/);
+    await catalogo.goto("/admin/productos/nuevo");
+    await expect(catalogo.getByTestId("modo-carga")).toHaveText("Sin IA (medición)");
+    await expect(catalogo.getByRole("region", { name: "Sugerencia de la IA" })).toHaveCount(0);
+
+    // Vuelve a "Con IA": basta con recargar el formulario.
+    await selector.selectOption("asistido");
+    await expect(page.getByText("Analista de Catálogo ahora carga con IA.")).toBeVisible();
+    await catalogo.reload();
+    await expect(catalogo.getByTestId("modo-carga")).toHaveText("Con IA");
+    await expect(catalogo.getByRole("region", { name: "Sugerencia de la IA" })).toBeVisible();
+  });
 });

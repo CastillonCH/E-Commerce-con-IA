@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { getServerEnv } from "@/lib/env.server";
+import { modoCargaDe } from "@/lib/modo-carga";
 import { listProveedoresActivos } from "@/lib/data/proveedores-repo";
 import { formatearDuracion, obtenerMetricasCarga, type ResumenCarga } from "@/lib/data/carga-repo";
 import { NewProductForm } from "@/components/admin/NewProductForm";
@@ -10,7 +10,7 @@ export default async function AdminNewProductPage() {
     listProveedoresActivos(),
     session ? obtenerMetricasCarga(session.email) : Promise.resolve({}),
   ]);
-  const modo = getServerEnv().MODO_CATALOGO;
+  const modo = session && (await modoCargaDe(session.email)) === "manual" ? "experimento" : "asistido";
 
   const fichas = (mios.manual?.fichas ?? 0) + (mios.asistido?.fichas ?? 0);
   const resumen =

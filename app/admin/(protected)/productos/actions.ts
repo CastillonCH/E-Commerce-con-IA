@@ -3,8 +3,8 @@
 import { z } from "zod";
 import { canManageProducts, getSession } from "@/lib/auth";
 import { clasificarProducto } from "@/lib/ai-client";
-import { getServerEnv } from "@/lib/env.server";
-import { findUserByEmail } from "@/lib/data/users-repo";
+import { findUserByEmail, type ModoCarga } from "@/lib/data/users-repo";
+import { modoCargaDe } from "@/lib/modo-carga";
 import { eliminarImagenProducto, guardarImagenProducto } from "@/lib/storage";
 import {
   createProductFromAI,
@@ -86,8 +86,8 @@ export async function sugerirCategoriaAction(input: unknown): Promise<SugerirRes
   if (!session || !canManageProducts(session.role)) {
     return { disponible: false, aviso: "No autorizado." };
   }
-  // En modo experimento quien carga debe elegir sin ver a la IA (línea base).
-  if (getServerEnv().MODO_CATALOGO !== "asistido") return { disponible: false };
+  // Sin IA (medición): quien carga debe elegir sin ver a la IA (línea base).
+  if ((await modoCargaDe(session.email)) !== "asistido") return { disponible: false };
 
   const parsed = sugerirSchema.safeParse(input);
   if (!parsed.success) return { disponible: false, aviso: "Faltan la foto, el nombre o la descripción." };
@@ -196,10 +196,11 @@ export async function createProductAction(
     void error;
   }
 
-  // "asistido" solo si de verdad vio la sugerencia: si la IA no respondió
-  // en el formulario, eligió a ciegas y cuenta como carga manual.
-  const modoCarga =
-    getServerEnv().MODO_CATALOGO === "asistido" && parsed.data.sugerenciaMostrada ? "asistido" : "manual";
+  // "asistido" solo si de verdad vio la sugerencia (que solo se muestra a
+  // quien está en modo con IA): si la IA no respondió, o está en modo sin
+  // IA, eligió a ciegas y cuenta como carga manual. Se decide por lo que vio,
+  // no por el modo actual, por si el admin se lo cambió con el formulario abierto.
+  const modoCarga: ModoCarga = parsed.data.sugerenciaMostrada ? "asistido" : "manual";
   const creadoPor = (await findUserByEmail(session.email))?.id;
 
   try {

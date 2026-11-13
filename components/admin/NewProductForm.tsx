@@ -202,11 +202,22 @@ function FormularioCarga({ proveedores, modo, resumen, onCargarOtro }: Props & {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-2 text-2xl font-semibold text-slate-900">Nuevo producto</h1>
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold text-slate-900">Nuevo producto</h1>
+        <span
+          data-testid="modo-carga"
+          className={cn(
+            "rounded-full px-2.5 py-1 text-xs font-semibold",
+            asistido ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800",
+          )}
+        >
+          {asistido ? "Con IA" : "Sin IA (medición)"}
+        </span>
+      </div>
       <p className="mb-6 text-sm text-slate-500">
         {asistido
           ? "Sube la foto y escribe el nombre y la descripción: la IA propone el departamento y la categoría, y tú solo confirmas o corriges."
-          : "Modo experimento: elige la categoría sin ayuda de la IA (sirve para medir la carga manual). La IA la analiza al guardar."}
+          : "Carga sin IA: elige el departamento y la categoría por tu cuenta, sin sugerencia (así se mide la carga manual). Un administrador eligió este modo para tu cuenta."}
       </p>
       {resumen}
 

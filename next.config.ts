@@ -30,6 +30,10 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // El círculo "N" de desarrollo tapaba la cuenta del panel (abajo a la
+  // izquierda). Solo existe con `npm run dev`; los errores de compilación
+  // se siguen mostrando en pantalla igual.
+  devIndicators: false,
   images: {
     dangerouslyAllowLocalIP: isDev,
     remotePatterns: [

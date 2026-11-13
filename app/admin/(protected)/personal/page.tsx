@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth";
+import { modoCargaPorDefecto } from "@/lib/modo-carga";
 import { listPersonal } from "@/lib/data/users-repo";
 import { PersonalPanel } from "@/components/admin/PersonalPanel";
 
@@ -16,7 +17,11 @@ export default async function PersonalPage() {
         </p>
       </div>
 
-      <PersonalPanel personal={personal} miEmail={session?.email ?? ""} />
+      <PersonalPanel
+        personal={personal}
+        miEmail={session?.email ?? ""}
+        modoPorDefecto={modoCargaPorDefecto()}
+      />
     </div>
   );
 }

@@ -117,6 +117,8 @@ export async function listClients(): Promise<UserRecord[]> {
 // siempre quede al menos un ADMIN activo (trg_usuarios_ultimo_admin).
 
 export type RolPersonal = "ADMIN" | "CATALOGO";
+// "asistido" = carga con la sugerencia de la IA; "manual" = sin IA (medición).
+export type ModoCarga = "manual" | "asistido";
 
 export interface MiembroPersonal {
   id: string;
@@ -127,6 +129,8 @@ export interface MiembroPersonal {
   debeCambiarPassword: boolean;
   ultimoAcceso: string | null;
   creadoEn: string;
+  // null = usa el valor por defecto del servidor (MODO_CATALOGO).
+  modoCarga: ModoCarga | null;
 }
 
 export class PersonalError extends Error {}
@@ -141,8 +145,9 @@ export async function listPersonal(): Promise<MiembroPersonal[]> {
     debe_cambiar_password: boolean;
     ultimo_acceso: Date | null;
     creado_en: Date;
+    modo_carga: ModoCarga | null;
   }>(
-    `SELECT id::text, nombre, email::text, rol, activo, debe_cambiar_password, ultimo_acceso, creado_en
+    `SELECT id::text, nombre, email::text, rol, activo, debe_cambiar_password, ultimo_acceso, creado_en, modo_carga
        FROM usuarios
       WHERE rol <> 'CLIENT'
       ORDER BY activo DESC, rol, nombre`,
@@ -156,7 +161,30 @@ export async function listPersonal(): Promise<MiembroPersonal[]> {
     debeCambiarPassword: row.debe_cambiar_password,
     ultimoAcceso: row.ultimo_acceso?.toISOString() ?? null,
     creadoEn: row.creado_en.toISOString(),
+    modoCarga: row.modo_carga,
   }));
+}
+
+/**
+ * El ADMIN elige si un empleado carga con IA o sin IA. Vale al instante (se
+ * lee en cada carga de "Nuevo producto"). A diferencia del rol o del estado,
+ * un admin SÍ puede cambiar su propio modo (por ejemplo, para una demostración).
+ */
+export async function setMiembroModoCarga(id: string, modo: ModoCarga): Promise<void> {
+  const row = await queryOne<{ id: string }>(
+    `UPDATE usuarios SET modo_carga = $2 WHERE id = $1 AND rol <> 'CLIENT' RETURNING id::text AS id`,
+    [id, modo],
+  );
+  if (!row) throw new PersonalError("Esa cuenta no existe o no es del personal.");
+}
+
+/** Modo con el que esta persona carga productos ahora mismo. */
+export async function obtenerModoCarga(email: string, porDefecto: ModoCarga): Promise<ModoCarga> {
+  const row = await queryOne<{ modo_carga: ModoCarga | null }>(
+    `SELECT modo_carga FROM usuarios WHERE email = $1`,
+    [email],
+  );
+  return row?.modo_carga ?? porDefecto;
 }
 
 // Sin caracteres que se confunden al dictarla o copiarla (0/O, 1/l/I).
