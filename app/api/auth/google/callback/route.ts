@@ -19,9 +19,9 @@ interface GoogleProfile {
   name: string;
 }
 
-function redirectWithError(origin: string) {
+function redirectWithError(origin: string, error = "google_failed") {
   const loginUrl = new URL("/login", origin);
-  loginUrl.searchParams.set("error", "google_failed");
+  loginUrl.searchParams.set("error", error);
   return NextResponse.redirect(loginUrl);
 }
 
@@ -79,6 +79,12 @@ export async function GET(request: Request) {
     name: profile.name,
   });
 
+  // "Continuar con Google" es solo para clientes: si ese correo es de una
+  // cuenta del personal, no se le da sesión de personal por aquí
+  // (antes sí, con solo coincidir el correo). Tiene que usar /admin/login.
+  if (user.role !== "CLIENT") return redirectWithError(url.origin, "staff_account");
+  if (!user.activo) return redirectWithError(url.origin, "account_disabled");
+
   const token = await createSessionToken({
     role: user.role,
     name: user.nombre,
@@ -87,7 +93,7 @@ export async function GET(request: Request) {
   });
 
   const response = NextResponse.redirect(new URL(from, url.origin));
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(user.role));
   response.cookies.delete(CSRF_COOKIE);
   return response;
 }

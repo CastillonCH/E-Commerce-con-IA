@@ -12,8 +12,16 @@ import { getServerEnv } from "@/lib/env.server";
  */
 
 const ALGORITHM = "HS256";
-const EXPIRATION = "8h";
-const VALID_ROLES: UserRole[] = ["ADMIN", "SELLER", "CLIENT"];
+const VALID_ROLES: UserRole[] = ["ADMIN", "CATALOGO", "CLIENT"];
+
+// El personal (ADMIN/CATALOGO) tiene una sesión más corta que el cliente: su
+// cookie da acceso al panel (pedidos, clientes, productos), así que si se
+// olvida abierta en una PC compartida o alguien la copia, sirve menos tiempo.
+const HORAS_SESION: Record<UserRole, number> = { ADMIN: 2, CATALOGO: 2, CLIENT: 8 };
+
+export function sessionMaxAgeSeconds(role: UserRole): number {
+  return HORAS_SESION[role] * 60 * 60;
+}
 
 export interface SessionPayload {
   role: UserRole;
@@ -43,7 +51,7 @@ export async function signSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: ALGORITHM })
     .setIssuedAt()
-    .setExpirationTime(EXPIRATION)
+    .setExpirationTime(`${HORAS_SESION[payload.role]}h`)
     .sign(getSecretKey());
 }
 

@@ -26,7 +26,7 @@ const SECTIONS = [
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administrador global",
-  SELLER: "Vendedor",
+  CATALOGO: "Catálogo",
   CLIENT: "Cliente",
 };
 

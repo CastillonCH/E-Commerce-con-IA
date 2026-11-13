@@ -88,7 +88,7 @@ export interface CreateOrderInput {
 }
 
 // Delega en fn_crear_pedido(): la base ignora cualquier nombre/precio que
-// mande el cliente y toma precio, stock, vendedor e imagen directo de
+// mande el cliente y toma nombre, precio, stock e imagen directo de
 // `productos` (trg_pedido_items_antes) — por eso aquí solo se envían
 // productId y cantidad, nunca un precio de confianza del cliente.
 export async function createOrder(input: CreateOrderInput): Promise<Order> {

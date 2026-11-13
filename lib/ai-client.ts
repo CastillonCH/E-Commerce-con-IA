@@ -57,7 +57,7 @@ export interface ClasificarProductoInput {
 /**
  * Llama a POST /clasificar de ai-service. Lanza (no devuelve null) si
  * algo falla — el llamador (Server Action de alta de producto) decide
- * cómo degradar: "nunca bloquees al vendedor" significa que el producto
+ * cómo degradar: "nunca bloquees al personal" significa que el producto
  * se guarda igual, sin predicción, con un aviso — ver
  * app/admin/(protected)/productos/actions.ts.
  */

@@ -1,6 +1,8 @@
 import type { Departamento } from "@/lib/taxonomy";
 
-export type UserRole = "ADMIN" | "SELLER" | "CLIENT";
+// ADMIN: todo el panel. CATALOGO: personal que carga y mantiene productos.
+// CLIENT: comprador. NovaStore es un e-commerce: no hay vendedores externos.
+export type UserRole = "ADMIN" | "CATALOGO" | "CLIENT";
 
 export type { Departamento };
 
@@ -45,7 +47,8 @@ export interface NewProductInput {
   stock: number;
   marca: string;
   departamento: Departamento;
-  categoriaVendedor: string;
+  categoriaManual: string;
+  proveedorId?: string;
   imagen: File;
 }
 
@@ -89,14 +92,23 @@ export interface ApiErrorResponse {
   detail: string;
 }
 
-export type VendorStatus = "pendiente" | "aprobado" | "rechazado" | "suspendido";
+// Estados de un producto en el panel (enum estado_publicacion de la base).
+export type ProductStatus =
+  | "pendiente_revision"
+  | "publicado"
+  | "rechazado"
+  | "pausado"
+  | "archivado";
 
-export interface Vendedor {
+// Empresa a la que NovaStore le compra la mercadería. Solo datos: no
+// inicia sesión ni publica productos.
+export interface Proveedor {
   id: string;
   nombre: string;
-  email: string;
-  categoria: string | null;
-  estado: VendorStatus;
-  fecha: string;
+  razonSocial: string | null;
+  ruc: string | null;
+  email: string | null;
+  telefono: string | null;
+  activo: boolean;
   productos: number;
 }

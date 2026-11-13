@@ -9,7 +9,11 @@ import {
   listRelacionados,
   listByMarca,
   updateProductRecord,
-  removeProduct,
+  cambiarEstadoProducto,
+  eliminarProductoDefinitivo,
+  listAdminProducts,
+  getAdminProductById,
+  countProductsByEstado,
   createProductFromAI,
   reclassifyProduct,
   listPendingReview,
@@ -19,7 +23,7 @@ import {
   listDetectedDuplicates,
   resolveDuplicate,
   detectarYRegistrarDuplicados,
-  getCategoriaVendedorNombre,
+  getCategoriaManualNombre,
 } from "@/lib/data/products-repo";
 
 // Construye una respuesta de ai-service mínima pero completa — el mismo
@@ -188,70 +192,186 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
     });
 
-    describe("updateProductRecord / removeProduct", () => {
-      it("actualiza nombre, descripción, precio y stock de un producto publicado", async () => {
-        const updated = await updateProductRecord("2", {
-          nombre: "Licuadora Editada",
-          descripcion: "Nueva descripción de al menos veinte caracteres.",
-          precio: 199.9,
-          stock: 10,
+    describe("updateProductRecord: cambios menores directo, importantes a revisión", () => {
+      // Producto propio de estos tests (publicado por la IA con política
+      // "umbral"), para no sacar de la tienda a los productos semilla que
+      // usan los demás tests y los E2E.
+      async function crearPublicado(nombre: string): Promise<string> {
+        process.env.REVIEW_POLICY = "umbral";
+        process.env.REVIEW_THRESHOLD = "0.75";
+        const creado = await createProductFromAI({
+          nombre,
+          descripcion: "Producto de prueba para los tests de edición del panel.",
+          marca: "HogarPlus",
+          departamento: "Hogar",
+          categoriaManualNombre: "Decoración y menaje",
+          precio: 50,
+          stock: 5,
+          imagenUrl: "https://example.com/edicion.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Decoración y menaje", confianza: 0.95, modo: "demo" }),
         });
-        expect(updated?.nombre).toBe("Licuadora Editada");
-        expect(updated?.descripcion).toBe("Nueva descripción de al menos veinte caracteres.");
-        expect(updated?.precio).toBe(199.9);
-        expect(updated?.stock).toBe(10);
+        expect(creado.pendingReview).toBe(false);
+        return creado.productId;
+      }
+
+      it("precio y stock se actualizan sin sacar el producto de la tienda", async () => {
+        const id = await crearPublicado("Florero Para Editar Precio");
+        const result = await updateProductRecord(id, { precio: 199.9, stock: 10 });
+        expect(result).toEqual({ found: true, pendingReview: false });
+        const product = await getProductById(id);
+        expect(product?.precio).toBe(199.9);
+        expect(product?.stock).toBe(10);
       });
 
-      it("actualiza la categoría del vendedor solo cuando viene junto con el departamento", async () => {
-        await updateProductRecord("2", { departamento: "Hogar", categoriaVendedor: "Muebles" });
-        expect(await getCategoriaVendedorNombre("2")).toBe("Muebles");
+      it("cambiar el nombre de un producto publicado lo devuelve a revisión", async () => {
+        const id = await crearPublicado("Florero Para Renombrar");
+        const result = await updateProductRecord(id, {
+          nombre: "Florero Renombrado",
+          descripcion: "Nueva descripción de al menos veinte caracteres.",
+        });
+        expect(result).toEqual({ found: true, pendingReview: true });
+        expect(await getProductById(id)).toBeNull(); // ya no está en la tienda
+        const enPanel = await getAdminProductById(id);
+        expect(enPanel?.estado).toBe("pendiente_revision");
+        expect(enPanel?.nombre).toBe("Florero Renombrado");
+      });
+
+      it("actualiza la categoría manual solo cuando viene junto con el departamento", async () => {
+        const id = await crearPublicado("Florero Para Recategorizar");
+        await updateProductRecord(id, { departamento: "Hogar", categoriaManual: "Muebles" });
+        expect(await getCategoriaManualNombre(id)).toBe("Muebles");
       });
 
       it("rechaza una categoría que no pertenece al departamento enviado", async () => {
         await expect(
-          updateProductRecord("2", { departamento: "Hogar", categoriaVendedor: "Audio y audífonos" }),
+          updateProductRecord("2", { departamento: "Hogar", categoriaManual: "Audio y audífonos" }),
         ).rejects.toThrow(/no pertenece al departamento/);
+        expect(await getProductById("2")).not.toBeNull(); // no se tocó
       });
 
-      it("devuelve null para un id inexistente", async () => {
-        expect(await updateProductRecord("99999", { stock: 1 })).toBeNull();
+      it("no encuentra un id inexistente", async () => {
+        expect(await updateProductRecord("99999", { stock: 1 })).toEqual({ found: false, pendingReview: false });
+      });
+    });
+
+    describe("cambiarEstadoProducto: pausar, reactivar, archivar, restaurar", () => {
+      it("pausar saca el producto de la tienda y reactivar lo devuelve", async () => {
+        expect(await cambiarEstadoProducto("4", "pausar")).toBe("pausado");
+        expect(await getProductById("4")).toBeNull();
+        expect(await cambiarEstadoProducto("4", "pausar")).toBeNull(); // ya estaba pausado
+
+        expect(await cambiarEstadoProducto("4", "reactivar")).toBe("publicado");
+        expect(await getProductById("4")).not.toBeNull();
       });
 
-      it("pasa el producto a inactivo y deja de verse en el catálogo", async () => {
-        expect(await removeProduct("3")).toBe(true);
+      it("archivar lo saca de la tienda; restaurar lo deja pausado (no a la venta)", async () => {
+        expect(await cambiarEstadoProducto("3", "archivar")).toBe("archivado");
         expect(await getProductById("3")).toBeNull();
+        expect(await cambiarEstadoProducto("3", "archivar")).toBeNull();
+        expect(await updateProductRecord("3", { stock: 1 })).toEqual({ found: false, pendingReview: false });
+
+        expect(await cambiarEstadoProducto("3", "restaurar")).toBe("pausado");
+        expect(await cambiarEstadoProducto("3", "reactivar")).toBe("publicado");
       });
 
-      it("devuelve false para un producto ya inactivo o inexistente", async () => {
-        expect(await removeProduct("3")).toBe(false);
-        expect(await removeProduct("99999")).toBe(false);
+      it("no hace nada con un id inexistente", async () => {
+        expect(await cambiarEstadoProducto("99999", "archivar")).toBeNull();
+      });
+
+      it("el panel lista cada estado por separado y los cuenta", async () => {
+        await cambiarEstadoProducto("5", "pausar");
+        const pausados = await listAdminProducts("pausado");
+        expect(pausados.some((p) => p.id === "5")).toBe(true);
+        expect(pausados.every((p) => p.estado === "pausado")).toBe(true);
+        expect((await countProductsByEstado()).pausado).toBeGreaterThanOrEqual(1);
+        await cambiarEstadoProducto("5", "reactivar");
+      });
+
+      it("el panel muestra el proveedor del producto", async () => {
+        expect((await getAdminProductById("1"))?.proveedor).toBe("SoundMax Perú");
+      });
+    });
+
+    describe("eliminarProductoDefinitivo: lo que nunca se vendió se borra; lo vendido solo se archiva", () => {
+      async function crearEnRevision(nombre: string, imagenUrl = "https://example.com/eliminar.jpg"): Promise<string> {
+        process.env.REVIEW_POLICY = "todos";
+        const creado = await createProductFromAI({
+          nombre,
+          descripcion: "Producto de prueba para los tests de eliminación.",
+          marca: "KidsWorld",
+          departamento: "Juguetes",
+          categoriaManualNombre: "Peluches",
+          precio: 15,
+          stock: 3,
+          imagenUrl,
+          clasificacion: clasificacionFalsa({ categoria: "Peluches", confianza: 0.9 }),
+        });
+        return creado.productId;
+      }
+
+      it("CATALOGO borra un producto en revisión; su foto queda para borrar del disco", async () => {
+        const id = await crearEnRevision("Peluche Mal Cargado", "https://example.com/peluche-mal-cargado.jpg");
+        const resultado = await eliminarProductoDefinitivo(id, "CATALOGO");
+        expect(resultado).toEqual({
+          ok: true,
+          nombre: "Peluche Mal Cargado",
+          imagenesHuerfanas: ["https://example.com/peluche-mal-cargado.jpg"],
+        });
+        expect(await getAdminProductById(id)).toBeNull();
+      });
+
+      it("una foto que usa otro producto no se borra del disco", async () => {
+        const compartida = "https://example.com/foto-compartida.jpg";
+        const a = await crearEnRevision("Peluche Foto Compartida A", compartida);
+        const b = await crearEnRevision("Peluche Foto Compartida B", compartida);
+        const resultado = await eliminarProductoDefinitivo(a, "ADMIN");
+        expect(resultado.ok && resultado.imagenesHuerfanas).toEqual([]);
+        expect((await getAdminProductById(b))?.imagen_url).toBe(compartida);
+      });
+
+      it("CATALOGO no puede borrar un producto que ya estuvo a la venta; ADMIN sí, si nunca se vendió", async () => {
+        const id = await crearEnRevision("Peluche Publicado Sin Ventas");
+        await approvePendingReview(id, "admin@novastore.pe", "Peluches");
+        expect(await eliminarProductoDefinitivo(id, "CATALOGO")).toEqual({ ok: false, motivo: "no_permitido" });
+        expect((await eliminarProductoDefinitivo(id, "ADMIN")).ok).toBe(true);
+      });
+
+      it("un producto que ya se vendió no se puede borrar, ni siquiera por ADMIN", async () => {
+        // El producto 1 tiene pedidos en los datos semilla.
+        expect(await eliminarProductoDefinitivo("1", "ADMIN")).toEqual({ ok: false, motivo: "vendido" });
+        expect((await getAdminProductById("1"))?.vendido).toBe(true);
+        expect(await getProductById("1")).not.toBeNull();
+      });
+
+      it("un id inexistente no se encuentra", async () => {
+        expect(await eliminarProductoDefinitivo("99999", "ADMIN")).toEqual({ ok: false, motivo: "no_encontrado" });
       });
     });
 
     describe("createProductFromAI — sin clasificación (servicio de IA caído)", () => {
-      it("rechaza crear un producto para una marca sin vendedor aprobado", async () => {
-        await expect(
-          createProductFromAI({
-            nombre: "Producto sin marca",
-            descripcion: "Una descripción cualquiera de más de veinte caracteres.",
-            marca: "MarcaInexistente",
-            departamento: "Electrónica",
-            categoriaVendedorNombre: "Audio y audífonos",
-            precio: 10,
-            stock: 1,
-            imagenUrl: "https://example.com/x.jpg",
-            clasificacion: null,
-          }),
-        ).rejects.toThrow(/vendedor aprobado/);
+      it("acepta una marca nueva y un producto sin proveedor (NovaStore vende todo)", async () => {
+        const result = await createProductFromAI({
+          nombre: "Producto De Marca Nueva",
+          descripcion: "Una descripción cualquiera de más de veinte caracteres.",
+          marca: "MarcaNuevaDePrueba",
+          departamento: "Electrónica",
+          categoriaManualNombre: "Audio y audífonos",
+          precio: 10,
+          stock: 1,
+          imagenUrl: "https://example.com/x.jpg",
+          clasificacion: null,
+        });
+        const enPanel = await getAdminProductById(result.productId);
+        expect(enPanel).toMatchObject({ marca: "MarcaNuevaDePrueba", proveedor: null, estado: "pendiente_revision" });
       });
 
-      it("nunca bloquea al vendedor: sin clasificación, el producto se guarda igual en revisión, sin predicción", async () => {
+      it("nunca bloquea al personal: sin clasificación, el producto se guarda igual en revisión, sin predicción", async () => {
         const result = await createProductFromAI({
           nombre: "Producto Sin IA Disponible",
           descripcion: "El servicio de IA no respondió para este producto de prueba.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 49.9,
           stock: 5,
           imagenUrl: "https://example.com/sin-ia.jpg",
@@ -278,7 +398,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Parlante resistente al agua con doce horas de batería.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 129.9,
           stock: 20,
           imagenUrl: "https://example.com/parlante.jpg",
@@ -298,7 +418,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Gorra ajustable para hacer deporte al aire libre.",
           marca: "ProSport",
           departamento: "Deportes",
-          categoriaVendedorNombre: "Ropa deportiva",
+          categoriaManualNombre: "Ropa deportiva",
           precio: 39.9,
           stock: 15,
           imagenUrl: "https://example.com/gorra.jpg",
@@ -327,7 +447,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Casaca impermeable pensada para trote y ciclismo.",
           marca: "ProSport",
           departamento: "Deportes",
-          categoriaVendedorNombre: "Ropa deportiva",
+          categoriaManualNombre: "Ropa deportiva",
           precio: 89.9,
           stock: 10,
           imagenUrl: "https://example.com/casaca.jpg",
@@ -355,7 +475,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Sábanas suaves de algodón para cama queen size.",
           marca: "HogarPlus",
           departamento: "Hogar",
-          categoriaVendedorNombre: "Decoración y menaje",
+          categoriaManualNombre: "Decoración y menaje",
           precio: 79.9,
           stock: 8,
           imagenUrl: "https://example.com/sabanas.jpg",
@@ -364,7 +484,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         expect(result.pendingReview).toBe(true);
       });
 
-      it("rejectPendingReview descarta el producto sin publicarlo", async () => {
+      it("rechazar guarda el motivo; al corregirlo vuelve a revisión sin motivo", async () => {
         process.env.REVIEW_POLICY = "umbral";
         process.env.REVIEW_THRESHOLD = "0.75";
 
@@ -373,7 +493,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Este producto se va a rechazar en el test, a propósito.",
           marca: "KidsWorld",
           departamento: "Juguetes",
-          categoriaVendedorNombre: "Peluches",
+          categoriaManualNombre: "Peluches",
           precio: 19.9,
           stock: 5,
           imagenUrl: "https://example.com/rechazo.jpg",
@@ -382,10 +502,21 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const pending = await listPendingReview();
         const entry = pending.find((p) => p.product.nombre === "Producto a Rechazar")!;
 
-        expect(await rejectPendingReview(entry.product.id)).toBe(true);
+        expect(await rejectPendingReview(entry.product.id, "Foto de baja calidad")).toBe(true);
         expect(await getProductById(entry.product.id)).toBeNull();
         const pendingAfter = await listPendingReview();
         expect(pendingAfter.some((p) => p.product.id === entry.product.id)).toBe(false);
+
+        const rechazados = await listAdminProducts("rechazado");
+        expect(rechazados.find((p) => p.id === entry.product.id)?.motivoRechazo).toBe("Foto de baja calidad");
+
+        // El personal lo corrige (aunque sea solo el precio) y se reenvía.
+        expect(await updateProductRecord(entry.product.id, { precio: 24.9 })).toEqual({
+          found: true,
+          pendingReview: true,
+        });
+        const corregido = await getAdminProductById(entry.product.id);
+        expect(corregido).toMatchObject({ estado: "pendiente_revision", motivoRechazo: null });
       });
     });
 
@@ -398,7 +529,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Un producto con confianza de IA muy alta, igual debe revisarse.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 199.9,
           stock: 10,
           imagenUrl: "https://example.com/audifonos-alta.jpg",
@@ -417,7 +548,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Para comprobar que se guarda una predicción por modelo.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 59.9,
           stock: 3,
           imagenUrl: "https://example.com/dos-modelos.jpg",
@@ -440,7 +571,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Clasificado solo con reglas de palabras clave, sin modelo real.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 29.9,
           stock: 7,
           imagenUrl: "https://example.com/demo.jpg",
@@ -472,7 +603,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Mochila resistente para el colegio, color azul.",
           marca: "UrbanWear",
           departamento: "Moda",
-          categoriaVendedorNombre: "Polos y camisas",
+          categoriaManualNombre: "Polos y camisas",
           precio: 59.9,
           stock: 10,
           imagenUrl: "https://example.com/mochila1.jpg",
@@ -483,7 +614,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Mochila resistente para el colegio, de color azul.",
           marca: "UrbanWear",
           departamento: "Moda",
-          categoriaVendedorNombre: "Polos y camisas",
+          categoriaManualNombre: "Polos y camisas",
           precio: 59.9,
           stock: 10,
           imagenUrl: "https://example.com/mochila2.jpg",
@@ -516,7 +647,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Primer parlante de la pareja casi idéntica para CU5.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 99.9,
           stock: 5,
           imagenUrl: "https://example.com/xz1-a.jpg",
@@ -527,7 +658,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Segundo parlante de la pareja casi idéntica para CU5.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 99.9,
           stock: 5,
           imagenUrl: "https://example.com/xz1-b.jpg",
@@ -551,9 +682,15 @@ describe.skipIf(!process.env.DATABASE_URL)(
         // no hacen nada.
         expect(typeof par!.id).toBe("number");
 
-        expect(await resolveDuplicate(par!.id, "confirmado", "admin@novastore.pe")).toBe(true);
+        // Confirmar archiva la copia más nueva (b se creó después que a).
+        expect(await resolveDuplicate(par!.id, "confirmado", "admin@novastore.pe")).toEqual({
+          ok: true,
+          archivado: { id: b.productId, nombre: "Parlante Portátil XZ1 Pro" },
+        });
+        expect((await getAdminProductById(b.productId))?.estado).toBe("archivado");
+        expect((await getAdminProductById(a.productId))?.estado).not.toBe("archivado");
         // Ya resuelto: no se puede volver a resolver.
-        expect(await resolveDuplicate(par!.id, "descartado", "admin@novastore.pe")).toBe(false);
+        expect((await resolveDuplicate(par!.id, "descartado", "admin@novastore.pe")).ok).toBe(false);
       });
     });
 
@@ -564,7 +701,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           descripcion: "Este producto se va a editar y reclasificar en el test.",
           marca: "SoundMax",
           departamento: "Electrónica",
-          categoriaVendedorNombre: "Audio y audífonos",
+          categoriaManualNombre: "Audio y audífonos",
           precio: 69.9,
           stock: 4,
           imagenUrl: "https://example.com/reclasificar-1.jpg",

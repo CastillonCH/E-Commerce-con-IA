@@ -94,7 +94,7 @@ def metricas(y_true, y_pred) -> dict:
 def metricas_por_fuente(df: pd.DataFrame, y_pred) -> dict:
     """Las mismas métricas separadas por fuente de datos. La de "shopify"
     es la más comparable con las corridas anteriores (solo Shopify) y con
-    fotos reales de vendedores; ver DATASET.md, "Sesgo por fuente"."""
+    fotos reales de la tienda; ver DATASET.md, "Sesgo por fuente"."""
     from sklearn.metrics import accuracy_score, f1_score
 
     y_pred = np.asarray(y_pred)

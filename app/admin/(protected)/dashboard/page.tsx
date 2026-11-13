@@ -4,7 +4,7 @@ import {
   PackagePlus,
   TrendingUp,
   Users,
-  Store,
+  Truck,
   Sparkles,
   Copy,
 } from "lucide-react";
@@ -14,15 +14,15 @@ import {
   listPossibleDuplicates,
 } from "@/lib/data/products-repo";
 import { listOrders } from "@/lib/data/orders-repo";
-import { listSellers } from "@/lib/data/users-repo";
+import { listProveedores } from "@/lib/data/proveedores-repo";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function AdminDashboardPage() {
-  const [products, orders, sellers, pendingReview, duplicates] =
+  const [products, orders, proveedores, pendingReview, duplicates] =
     await Promise.all([
       listProducts(),
       listOrders(),
-      listSellers(),
+      listProveedores(),
       listPendingReview(),
       listPossibleDuplicates(),
     ]);
@@ -34,7 +34,11 @@ export default async function AdminDashboardPage() {
       value: products.reduce((sum, p) => sum + p.stock, 0),
       icon: TrendingUp,
     },
-    { label: "Vendedores activos", value: sellers.length, icon: Store },
+    {
+      label: "Proveedores activos",
+      value: proveedores.filter((p) => p.activo).length,
+      icon: Truck,
+    },
     {
       label: "Ventas totales",
       value: formatCurrency(orders.reduce((sum, o) => sum + o.total, 0)),
@@ -48,11 +52,11 @@ export default async function AdminDashboardPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
         <div className="flex gap-2">
           <Link
-            href="/admin/vendedores"
+            href="/admin/proveedores"
             className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            <Store className="h-4 w-4" />
-            Ver vendedores
+            <Truck className="h-4 w-4" />
+            Ver proveedores
           </Link>
           <Link
             href="/admin/productos/nuevo"

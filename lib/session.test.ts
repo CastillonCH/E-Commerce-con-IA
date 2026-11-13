@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decodeJwt } from "jose";
 import { signSession, verifySession } from "@/lib/session";
 
 const payload = {
@@ -13,6 +14,16 @@ describe("signSession / verifySession", () => {
     const token = await signSession(payload);
     const session = await verifySession(token);
     expect(session).toEqual(payload);
+  });
+
+  it("el token del personal vence a las 2 horas y el del cliente a las 8", async () => {
+    const duracion = async (role: "ADMIN" | "CATALOGO" | "CLIENT") => {
+      const { exp, iat } = decodeJwt(await signSession({ ...payload, role }));
+      return exp! - iat!;
+    };
+    expect(await duracion("ADMIN")).toBe(2 * 60 * 60);
+    expect(await duracion("CATALOGO")).toBe(2 * 60 * 60);
+    expect(await duracion("CLIENT")).toBe(8 * 60 * 60);
   });
 
   it("devuelve null para undefined", async () => {

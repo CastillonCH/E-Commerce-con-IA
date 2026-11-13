@@ -127,7 +127,7 @@ Las fuentes no se ven igual: Moda trae fotos de estudio de 60x80 px;
 ABO, fotos de catálogo de Amazon con fondo blanco; Shopify, fotos reales
 de tiendas. Un modelo podría aprender "foto chica y borrosa = clase de
 moda" en vez de mirar el producto, y eso inflaría las métricas de test
-(que tienen la misma mezcla) sin servir para fotos reales de vendedores.
+(que tienen la misma mezcla) sin servir para fotos reales de la tienda.
 Por eso:
 
 - `entrenar_cu1.py` aplica a TODAS las imágenes de entrenamiento una
@@ -135,7 +135,7 @@ Por eso:
   que la resolución deje de delatar la fuente.
 - Todos los scripts reportan las métricas **también separadas por
   fuente** (`por_fuente` en `metricas.json`). La de `shopify` es la más
-  cercana al caso real (fotos de vendedores) y la más comparable con la
+  cercana al caso real (fotos reales de la tienda) y la más comparable con la
   corrida anterior.
 
 ## El mapeo de categorías de Shopify (`mapeo_categorias.py`)

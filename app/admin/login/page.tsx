@@ -38,8 +38,16 @@ function StaffLoginForm() {
       return;
     }
 
-    const data = (await response.json()) as { role: "ADMIN" | "SELLER" };
-    router.push(data.role === "ADMIN" ? from : "/admin/productos");
+    const data = (await response.json()) as {
+      role: "ADMIN" | "CATALOGO";
+      debeCambiarPassword?: boolean;
+    };
+    const destino = data.role === "ADMIN" ? from : "/admin/productos";
+    router.push(
+      data.debeCambiarPassword
+        ? `/admin/cambiar-clave?from=${encodeURIComponent(destino)}`
+        : destino,
+    );
     router.refresh();
   }
 

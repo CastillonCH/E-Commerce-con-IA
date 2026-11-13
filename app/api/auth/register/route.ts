@@ -39,6 +39,6 @@ export async function POST(request: Request) {
   });
 
   const response = NextResponse.json({ success: true });
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(user.role));
   return response;
 }

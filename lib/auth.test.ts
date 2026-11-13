@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { canManageProducts, sessionCookieOptions } from "@/lib/auth";
 
 describe("canManageProducts", () => {
-  it("permite ADMIN y SELLER", () => {
+  it("permite al personal: ADMIN y CATALOGO", () => {
     expect(canManageProducts("ADMIN")).toBe(true);
-    expect(canManageProducts("SELLER")).toBe(true);
+    expect(canManageProducts("CATALOGO")).toBe(true);
   });
 
   it("rechaza CLIENT y null", () => {
@@ -20,5 +20,11 @@ describe("sessionCookieOptions", () => {
     expect(options.sameSite).toBe("lax");
     expect(options.path).toBe("/");
     expect(options.maxAge).toBe(60 * 60 * 8);
+  });
+
+  it("la cookie del personal dura 2 horas y la del cliente 8", () => {
+    expect(sessionCookieOptions("ADMIN").maxAge).toBe(60 * 60 * 2);
+    expect(sessionCookieOptions("CATALOGO").maxAge).toBe(60 * 60 * 2);
+    expect(sessionCookieOptions("CLIENT").maxAge).toBe(60 * 60 * 8);
   });
 });

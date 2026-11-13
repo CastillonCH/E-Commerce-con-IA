@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { POST } from "./route";
+import { crearMiembroPersonal, setMiembroActivo } from "@/lib/data/users-repo";
 
 const DEMO_PASSWORD = "NovaStore2026!";
 
@@ -20,7 +21,7 @@ describe.skipIf(!process.env.DATABASE_URL)("POST /api/auth/staff-login", () => {
     );
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data).toEqual({ success: true, role: "ADMIN" });
+    expect(data).toEqual({ success: true, role: "ADMIN", debeCambiarPassword: false });
     expect(response.cookies.get("session")?.value).toBeTruthy();
   });
 
@@ -57,14 +58,32 @@ describe.skipIf(!process.env.DATABASE_URL)("POST /api/auth/staff-login", () => {
   it("ignora cualquier `role` enviado en el body: el rol siempre viene del repositorio", async () => {
     const response = await POST(
       postRequest({
-        email: "contacto@soundmax.pe",
+        email: "catalogo@novastore.pe",
         password: DEMO_PASSWORD,
         role: "ADMIN",
       }),
     );
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.role).toBe("SELLER");
+    expect(data.role).toBe("CATALOGO");
+  });
+
+  it("una cuenta nueva entra con su contraseña temporal y se le pide cambiarla", async () => {
+    const email = `staff-temporal-${Date.now()}@novastore.pe`;
+    const { passwordTemporal } = await crearMiembroPersonal({ nombre: "Temporal", email, rol: "CATALOGO" });
+    const response = await POST(postRequest({ email, password: passwordTemporal }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true, role: "CATALOGO", debeCambiarPassword: true });
+  });
+
+  it("una cuenta desactivada no entra, aunque la contraseña sea correcta", async () => {
+    const email = `staff-inactivo-${Date.now()}@novastore.pe`;
+    const { id, passwordTemporal } = await crearMiembroPersonal({ nombre: "Inactivo", email, rol: "CATALOGO" });
+    await setMiembroActivo(id, false, "admin@novastore.pe");
+    const response = await POST(postRequest({ email, password: passwordTemporal }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).detail).toMatch(/desactivada/);
+    expect(response.cookies.get("session")).toBeUndefined();
   });
 
   it("rechaza un body con forma inválida", async () => {

@@ -1,8 +1,8 @@
 import "server-only";
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, isPgError, PG_ERROR } from "@/lib/db";
 import { getServerEnv } from "@/lib/env.server";
 import type { ClasificarResponse } from "@/lib/ai-client";
-import type { Product, Departamento } from "@/types";
+import type { Product, Departamento, ProductStatus } from "@/types";
 import { similarity } from "@/lib/similarity";
 
 interface ProductRow {
@@ -116,14 +116,14 @@ export async function getProductById(id: string): Promise<Product | null> {
   return row ? toProduct(row) : null;
 }
 
-// v_productos_tienda no trae categoria_vendedor_id (no es parte del
-// contrato público de Product) — EditProductForm lo necesita para
-// preseleccionar el <select> de categoría del vendedor.
-export async function getCategoriaVendedorNombre(productId: string): Promise<string | null> {
+// v_productos_tienda no trae categoria_manual_id (no es parte del contrato
+// público de Product) — EditProductForm lo necesita para preseleccionar el
+// <select> de la categoría elegida a mano.
+export async function getCategoriaManualNombre(productId: string): Promise<string | null> {
   const row = await queryOne<{ nombre: string | null }>(
     `SELECT c.nombre
        FROM productos p
-       LEFT JOIN categorias c ON c.id = p.categoria_vendedor_id
+       LEFT JOIN categorias c ON c.id = p.categoria_manual_id
       WHERE p.id = $1`,
     [productId],
   );
@@ -162,52 +162,102 @@ export async function listByMarca(marca: string): Promise<Product[]> {
   return rows.map(toProduct);
 }
 
-// Usado para el catálogo de /admin/productos de un SELLER: filtra por
-// vendedor_id (identidad real de su sesión), no por el texto de `marca`
-// —que puede diferir del nombre comercial de su tienda (ver
-// isProductOwnedByVendedor).
-export async function listByVendedor(vendedorId: string): Promise<Product[]> {
-  const rows = await query<ProductRow>(
-    `SELECT * FROM v_productos_tienda WHERE vendedor_id = $1 ORDER BY id::bigint`,
-    [vendedorId],
-  );
-  return rows.map(toProduct);
+// --- Catálogo del panel: TODOS los estados --------------------------------
+// v_productos_tienda solo devuelve lo publicado (es lo que ve el cliente).
+// El personal necesita ver también lo que está en revisión, rechazado,
+// pausado o archivado — si no, esos productos quedan invisibles para todos.
+export interface AdminProduct extends Product {
+  estado: ProductStatus;
+  motivoRechazo: string | null;
+  proveedorId: string | null;
+  proveedor: string | null;
+  actualizadoEn: string;
+  // true si aparece en algún pedido: entonces no se puede eliminar, solo archivar.
+  vendido: boolean;
 }
 
-// El `Product` público no trae vendedor_id (no es parte del contrato del
-// frontend); esto es lo que usan las Server Actions de editar/eliminar para
-// comprobar que un SELLER es realmente el dueño del producto, en vez de
-// comparar por nombre de marca (que no identifica al vendedor de forma
-// confiable — ver createProductFromAI).
-export async function isProductOwnedByVendedor(
-  productId: string,
-  vendedorId: string,
-): Promise<boolean> {
-  const row = await queryOne<{ owned: boolean }>(
-    `SELECT (vendedor_id = $2) AS owned FROM productos WHERE id = $1`,
-    [productId, vendedorId],
-  );
-  return row?.owned ?? false;
+interface AdminProductRow extends ProductRow {
+  estado: ProductStatus;
+  motivo_rechazo: string | null;
+  proveedor_id: string | null;
+  proveedor: string | null;
+  actualizado_en: Date;
+  vendido: boolean;
 }
 
-// true si `marca` ya tiene productos publicados a nombre de OTRO vendedor:
-// evita que un vendedor use el nombre de una marca ajena para su propio
-// producto (el dueño real de vendedorId sale de la sesión, no de este texto
-// — ver createProductFromAI — pero el texto de la marca sigue siendo libre,
-// así que esto es lo único que impide suplantar una marca existente).
-export async function isMarcaOwnedByOtherVendedor(
-  marca: string,
-  vendedorId: string,
-): Promise<boolean> {
-  const row = await queryOne<{ owned: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM productos p
-       JOIN marcas m ON m.id = p.marca_id
-       WHERE m.nombre = $1 AND p.vendedor_id <> $2
-     ) AS owned`,
-    [marca, vendedorId],
+const SELECT_ADMIN = `
+  SELECT
+    p.id::text                                  AS id,
+    p.nombre,
+    p.precio::float8                            AS precio,
+    p.stock,
+    m.nombre::text                              AS marca,
+    d.nombre                                    AS departamento,
+    img.url                                     AS imagen_url,
+    COALESCE(c.nombre, 'Sin categoría')         AS categoria_ia,
+    p.precio_original::float8                   AS "precioOriginal",
+    p.rating_promedio::float8                   AS rating,
+    p.num_resenas                               AS "numResenas",
+    p.envio_gratis                              AS "envioGratis",
+    p.es_nuevo                                  AS "esNuevo",
+    p.descripcion,
+    p.estado,
+    p.motivo_rechazo,
+    p.proveedor_id::text                        AS proveedor_id,
+    pr.nombre                                   AS proveedor,
+    p.actualizado_en,
+    EXISTS (SELECT 1 FROM pedido_items pi WHERE pi.producto_id = p.id) AS vendido
+  FROM productos p
+  JOIN marcas m ON m.id = p.marca_id
+  JOIN departamentos d ON d.id = p.departamento_id
+  LEFT JOIN categorias c ON c.id = p.categoria_id
+  LEFT JOIN proveedores pr ON pr.id = p.proveedor_id
+  LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+`;
+
+function toAdminProduct(row: AdminProductRow): AdminProduct {
+  return {
+    ...toProduct(row),
+    estado: row.estado,
+    motivoRechazo: row.motivo_rechazo,
+    proveedorId: row.proveedor_id,
+    proveedor: row.proveedor,
+    actualizadoEn: row.actualizado_en.toISOString(),
+    vendido: row.vendido,
+  };
+}
+
+export async function listAdminProducts(estado?: ProductStatus): Promise<AdminProduct[]> {
+  const rows = await query<AdminProductRow>(
+    estado
+      ? `${SELECT_ADMIN} WHERE p.estado = $1 ORDER BY p.actualizado_en DESC, p.id DESC`
+      : `${SELECT_ADMIN} ORDER BY p.actualizado_en DESC, p.id DESC`,
+    estado ? [estado] : [],
   );
-  return row?.owned ?? false;
+  return rows.map(toAdminProduct);
+}
+
+export async function getAdminProductById(id: string): Promise<AdminProduct | null> {
+  if (!/^\d+$/.test(id)) return null;
+  const row = await queryOne<AdminProductRow>(`${SELECT_ADMIN} WHERE p.id = $1`, [id]);
+  return row ? toAdminProduct(row) : null;
+}
+
+export async function countProductsByEstado(): Promise<Record<ProductStatus, number>> {
+  const rows = await query<{ estado: ProductStatus; total: number }>(
+    `SELECT estado, count(*)::int AS total FROM productos GROUP BY estado`,
+  );
+  const conteo: Record<ProductStatus, number> = {
+    pendiente_revision: 0,
+    publicado: 0,
+    rechazado: 0,
+    pausado: 0,
+    archivado: 0,
+  };
+  for (const row of rows) {
+    if (row.estado in conteo) conteo[row.estado] = row.total;
+  }
+  return conteo;
 }
 
 async function upsertMarca(nombre: string): Promise<number> {
@@ -242,17 +292,55 @@ export interface ProductPatch {
   // Solo tiene efecto si `departamento` también viene en el mismo patch
   // (el formulario de edición siempre manda los dos juntos) — necesita
   // resolverse dentro de ese departamento por fk_productos_categoria_depto.
-  categoriaVendedor?: string;
+  categoriaManual?: string;
+  // null = sin proveedor; undefined = no se toca.
+  proveedorId?: string | null;
 }
 
-// Usado por EditProductForm (vía Server Action): no toca la categoría
+export interface UpdateProductResult {
+  found: boolean;
+  // true si el cambio devolvió el producto a revisión (ver abajo).
+  pendingReview: boolean;
+}
+
+// Usado por EditProductForm (vía Server Action). No toca la categoría
 // FINAL ni la imagen — eso pasa por reclassifyProduct cuando se reemplaza
-// la foto. Solo devuelve el producto si sigue publicado: v_productos_tienda
-// no muestra productos pendientes/inactivos.
+// la foto.
+//
+// Cambios menores (precio, stock, marca, proveedor) se aplican directo.
+// Cambios que alteran QUÉ es el producto (nombre, descripción, departamento
+// o categoría) lo devuelven a revisión: si no, una ficha ya aprobada podría
+// convertirse en otra cosa sin que nadie la revise. Un producto rechazado
+// también vuelve a revisión al guardarlo: así se corrige y se reenvía.
 export async function updateProductRecord(
   id: string,
   patch: ProductPatch,
-): Promise<Product | null> {
+): Promise<UpdateProductResult> {
+  const actual = await queryOne<{
+    nombre: string;
+    descripcion: string | null;
+    departamento: string;
+    categoria_manual: string | null;
+    estado: ProductStatus;
+  }>(
+    `SELECT p.nombre, p.descripcion, d.nombre AS departamento, c.nombre AS categoria_manual, p.estado
+       FROM productos p
+       JOIN departamentos d ON d.id = p.departamento_id
+       LEFT JOIN categorias c ON c.id = p.categoria_manual_id
+      WHERE p.id = $1`,
+    [id],
+  );
+  if (!actual || actual.estado === "archivado") return { found: false, pendingReview: false };
+
+  const cambioImportante =
+    (patch.nombre !== undefined && patch.nombre !== actual.nombre) ||
+    (patch.descripcion !== undefined && patch.descripcion !== (actual.descripcion ?? "")) ||
+    (patch.departamento !== undefined && patch.departamento !== actual.departamento) ||
+    (patch.categoriaManual !== undefined && patch.categoriaManual !== actual.categoria_manual);
+  const vuelveARevision =
+    actual.estado === "rechazado" ||
+    (cambioImportante && (actual.estado === "publicado" || actual.estado === "pausado"));
+
   const sets: string[] = [];
   const params: unknown[] = [];
 
@@ -283,26 +371,33 @@ export async function updateProductRecord(
     params.push(departamentoId);
     sets.push(`departamento_id = $${params.length}`);
   }
-  if (patch.categoriaVendedor !== undefined && departamentoId !== undefined) {
+  if (patch.categoriaManual !== undefined && departamentoId !== undefined) {
     const categoria = await queryOne<{ id: number }>(
       `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
-      [patch.categoriaVendedor, departamentoId],
+      [patch.categoriaManual, departamentoId],
     );
     if (!categoria) {
-      throw new Error(`La categoría "${patch.categoriaVendedor}" no pertenece al departamento ${patch.departamento}.`);
+      throw new Error(`La categoría "${patch.categoriaManual}" no pertenece al departamento ${patch.departamento}.`);
     }
     params.push(categoria.id);
-    sets.push(`categoria_vendedor_id = $${params.length}`);
+    sets.push(`categoria_manual_id = $${params.length}`);
+  }
+  if (patch.proveedorId !== undefined) {
+    params.push(patch.proveedorId);
+    sets.push(`proveedor_id = $${params.length}`);
+  }
+  if (vuelveARevision) {
+    sets.push(`estado = 'pendiente_revision'`);
   }
 
-  if (sets.length === 0) return getProductById(id);
+  if (sets.length === 0) return { found: true, pendingReview: false };
 
   params.push(id);
   const result = await queryOne<{ id: string }>(
     `UPDATE productos SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id::text AS id`,
     params,
   );
-  return result ? getProductById(result.id) : null;
+  return { found: result !== null, pendingReview: vuelveARevision };
 }
 
 // Reemplaza la foto principal y vuelve a clasificar (F4.3: "al editar,
@@ -372,18 +467,99 @@ export async function reclassifyProduct(input: ReclassifyInput): Promise<Reclass
   return { pendingReview: !puedePublicarDirecto };
 }
 
-// Borrado lógico: pasa a 'inactivo' en vez de DELETE (la FK de pedido_items
-// con ON DELETE RESTRICT lo impediría de todos modos si el producto ya se
-// vendió alguna vez, y 'inactivo' es justamente el estado que el esquema
-// define para esto).
-export async function removeProduct(id: string): Promise<boolean> {
-  const result = await queryOne<{ id: string }>(
-    `UPDATE productos SET estado = 'inactivo'
-      WHERE id = $1 AND estado = 'publicado'
-      RETURNING id::text AS id`,
+// --- Cambios de estado desde el panel -------------------------------------
+// Nunca se borra un producto con DELETE: los pedidos antiguos lo necesitan
+// (pedido_items lo referencia con ON DELETE RESTRICT). "Eliminar" es
+// archivar: sale de la tienda y de las listas, y se puede restaurar.
+export type AccionEstado = "pausar" | "reactivar" | "archivar" | "restaurar";
+
+const TRANSICIONES: Record<AccionEstado, { desde: string; hacia: string }> = {
+  // Fuera de la tienda por un tiempo (sin stock, temporada, error en la ficha).
+  pausar: { desde: `estado = 'publicado'`, hacia: `'pausado'` },
+  reactivar: { desde: `estado = 'pausado'`, hacia: `'publicado'` },
+  archivar: { desde: `estado <> 'archivado'`, hacia: `'archivado'` },
+  // Vuelve pausado si ya tenía categoría confirmada (el personal decide
+  // cuándo reactivarlo); si nunca la tuvo, a revisión.
+  restaurar: {
+    desde: `estado = 'archivado'`,
+    hacia: `(CASE WHEN categoria_id IS NULL THEN 'pendiente_revision' ELSE 'pausado' END)::estado_publicacion`,
+  },
+};
+
+export async function cambiarEstadoProducto(
+  id: string,
+  accion: AccionEstado,
+): Promise<ProductStatus | null> {
+  const { desde, hacia } = TRANSICIONES[accion];
+  const row = await queryOne<{ estado: ProductStatus }>(
+    `UPDATE productos SET estado = ${hacia}
+      WHERE id = $1 AND ${desde}
+      RETURNING estado`,
     [id],
   );
-  return result !== null;
+  return row?.estado ?? null;
+}
+
+// --- Eliminación definitiva -----------------------------------------------
+// Regla de un e-commerce: lo que NUNCA se vendió se puede borrar de verdad
+// (fichas mal cargadas, pruebas); lo que ya se vendió solo se archiva,
+// porque sus pedidos lo referencian (pedido_items, ON DELETE RESTRICT —
+// la base lo impide aunque alguien se salte el panel).
+//
+// ADMIN puede eliminar cualquier producto sin ventas. CATALOGO solo los que
+// nunca estuvieron a la venta (en revisión o rechazados): corrige sus
+// propios errores de carga, pero no retira productos del catálogo.
+//
+// Al borrarlo se van también, en cascada, sus fotos, predicciones de IA,
+// revisiones, embeddings y pares de duplicados.
+export const ESTADOS_ELIMINABLES_POR_CATALOGO: readonly ProductStatus[] = ["pendiente_revision", "rechazado"];
+
+export type EliminarProductoResultado =
+  | { ok: true; nombre: string; imagenesHuerfanas: string[] }
+  | { ok: false; motivo: "no_encontrado" | "vendido" | "no_permitido" };
+
+export async function eliminarProductoDefinitivo(
+  id: string,
+  rol: "ADMIN" | "CATALOGO",
+): Promise<EliminarProductoResultado> {
+  const producto = await queryOne<{ nombre: string; estado: ProductStatus; vendido: boolean }>(
+    `SELECT nombre, estado,
+            EXISTS (SELECT 1 FROM pedido_items WHERE producto_id = p.id) AS vendido
+       FROM productos p WHERE id = $1`,
+    [id],
+  );
+  if (!producto) return { ok: false, motivo: "no_encontrado" };
+  if (producto.vendido) return { ok: false, motivo: "vendido" };
+  if (rol !== "ADMIN" && !ESTADOS_ELIMINABLES_POR_CATALOGO.includes(producto.estado)) {
+    return { ok: false, motivo: "no_permitido" };
+  }
+
+  const imagenes = await query<{ url: string }>(
+    `SELECT url FROM producto_imagenes WHERE producto_id = $1`,
+    [id],
+  );
+  try {
+    const borrado = await queryOne<{ id: string }>(
+      `DELETE FROM productos WHERE id = $1 RETURNING id::text AS id`,
+      [id],
+    );
+    if (!borrado) return { ok: false, motivo: "no_encontrado" };
+  } catch (error) {
+    // Se vendió justo entre la comprobación y el DELETE.
+    if (isPgError(error, PG_ERROR.FOREIGN_KEY_VIOLATION)) return { ok: false, motivo: "vendido" };
+    throw error;
+  }
+
+  // Solo las fotos que ya no usa ningún otro producto.
+  const huerfanas: string[] = [];
+  for (const { url } of imagenes) {
+    const enUso = await queryOne<{ usada: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM producto_imagenes WHERE url = $1) AS usada`,
+      [url],
+    );
+    if (!enUso?.usada) huerfanas.push(url);
+  }
+  return { ok: true, nombre: producto.nombre, imagenesHuerfanas: huerfanas };
 }
 
 // --- Alta de producto con clasificación de IA ------------------------------
@@ -393,19 +569,16 @@ export async function removeProduct(id: string): Promise<boolean> {
 // IA (lib/ai-client.ts). `clasificacion` puede ser null (el servicio no
 // respondió) — nunca bloquea el alta, solo decide si hay predicción o no.
 export interface CreateProductFromAIInput {
-  // Si se omite (caso ADMIN, que no es vendedor), se resuelve buscando qué
-  // vendedor aprobado ya tiene productos con esta marca — ver el aviso en
-  // getVendedorIdByEmail sobre por qué nombre_comercial no sirve para esto
-  // ("SoundMax Perú" como tienda, "SoundMax" como marca de sus productos).
-  vendedorId?: string;
+  // Proveedor al que se le compra (opcional): no decide si se vende.
+  proveedorId?: string;
   nombre: string;
   descripcion: string;
   marca: string;
   departamento: Departamento;
-  // Categoría elegida a mano por el vendedor (línea base del problema, T1
-  // sección 1.2.1) — se guarda en productos.categoria_vendedor_id, nunca se
-  // usa como categoría final.
-  categoriaVendedorNombre: string;
+  // Categoría elegida a mano por el personal (línea base del problema, T1
+  // sección 1.2.1) — se guarda en productos.categoria_manual_id, nunca se
+  // usa como categoría final: esa la sugiere la IA y se confirma en revisión.
+  categoriaManualNombre: string;
   precio: number;
   stock: number;
   imagenUrl: string;
@@ -421,47 +594,30 @@ export interface CreateProductFromAIResult {
 export async function createProductFromAI(
   input: CreateProductFromAIInput,
 ): Promise<CreateProductFromAIResult> {
-  const vendedor = input.vendedorId
-    ? { id: input.vendedorId }
-    : await queryOne<{ id: string }>(
-        `SELECT DISTINCT v.id::text AS id
-           FROM vendedores v
-           JOIN productos p ON p.vendedor_id = v.id
-           JOIN marcas m ON m.id = p.marca_id
-          WHERE m.nombre = $1 AND v.estado = 'aprobado'
-          LIMIT 1`,
-        [input.marca],
-      );
-  if (!vendedor) {
-    throw new Error(
-      `No hay un vendedor aprobado para la marca "${input.marca}". Un administrador debe darla de alta en /admin/vendedores.`,
-    );
-  }
-
   const marcaId = await upsertMarca(input.marca);
   const departamentoId = await getDepartamentoId(input.departamento);
 
-  const categoriaVendedor = await queryOne<{ id: number }>(
+  const categoriaManual = await queryOne<{ id: number }>(
     `SELECT id FROM categorias WHERE nombre = $1 AND departamento_id = $2`,
-    [input.categoriaVendedorNombre, departamentoId],
+    [input.categoriaManualNombre, departamentoId],
   );
-  if (!categoriaVendedor) {
+  if (!categoriaManual) {
     throw new Error(
-      `La categoría "${input.categoriaVendedorNombre}" no pertenece al departamento ${input.departamento}.`,
+      `La categoría "${input.categoriaManualNombre}" no pertenece al departamento ${input.departamento}.`,
     );
   }
 
   const producto = await queryOne<{ id: string }>(
-    `INSERT INTO productos (vendedor_id, nombre, descripcion, marca_id, departamento_id, categoria_vendedor_id, precio, stock)
+    `INSERT INTO productos (proveedor_id, nombre, descripcion, marca_id, departamento_id, categoria_manual_id, precio, stock)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id::text AS id`,
     [
-      vendedor.id,
+      input.proveedorId ?? null,
       input.nombre,
       input.descripcion,
       marcaId,
       departamentoId,
-      categoriaVendedor.id,
+      categoriaManual.id,
       input.precio,
       input.stock,
     ],
@@ -509,7 +665,7 @@ export async function createProductFromAI(
 }
 
 // La categoría que sugiere la IA no siempre pertenece al departamento que
-// eligió el vendedor (el modelo clasifica entre las 21 sin esa
+// eligió el personal (el modelo clasifica entre las 21 sin esa
 // restricción) — productos.categoria_id SÍ la exige (fk_productos_categoria_depto).
 // Si no coincide, se devuelve null: el producto queda en revisión igual,
 // nunca se intenta publicar con una categoría de otro departamento.
@@ -762,8 +918,8 @@ export async function approvePendingReview(
     ],
   );
   // El trigger trg_revision_aplicar_categoria ya fija productos.categoria_id;
-  // solo falta pasar a publicado (trg_productos_reglas_publicacion valida
-  // que el vendedor esté aprobado y fija publicado_en).
+  // solo falta pasar a publicado (trg_productos_reglas_publicacion fija
+  // publicado_en).
   await query(`UPDATE productos SET estado = 'publicado' WHERE id = $1`, [productId]);
 
   return getProductById(productId);
@@ -771,7 +927,7 @@ export async function approvePendingReview(
 
 export async function rejectPendingReview(
   productId: string,
-  motivo = "Rechazado desde el panel de revisión de IA",
+  motivo: string,
 ): Promise<boolean> {
   const result = await queryOne<{ id: string }>(
     `UPDATE productos SET estado = 'rechazado', motivo_rechazo = $2
@@ -865,22 +1021,39 @@ export async function listDetectedDuplicates(): Promise<DetectedDuplicate[]> {
   return resultado;
 }
 
+export interface ResolveDuplicateResult {
+  ok: boolean;
+  // Al confirmar un duplicado se archiva la copia más nueva (la de id
+  // mayor: producto_b_id, por ck_duplicado_orden), para no vender lo mismo
+  // dos veces. null si no se archivó nada.
+  archivado: { id: string; nombre: string } | null;
+}
+
 export async function resolveDuplicate(
   id: number,
   estado: "confirmado" | "descartado",
   adminEmail: string,
-): Promise<boolean> {
+): Promise<ResolveDuplicateResult> {
   const admin = await queryOne<{ id: string }>(`SELECT id::text AS id FROM usuarios WHERE email = $1`, [adminEmail]);
   if (!admin) throw new Error("No se encontró al administrador.");
 
-  const result = await queryOne<{ id: number }>(
+  const result = await queryOne<{ producto_b_id: string }>(
     `UPDATE duplicados_detectados
         SET estado = $2, revisado_por = $3, revisado_en = now()
       WHERE id = $1 AND estado = 'pendiente'
-      RETURNING id`,
+      RETURNING producto_b_id::text AS producto_b_id`,
     [id, estado, admin.id],
   );
-  return result !== null;
+  if (!result) return { ok: false, archivado: null };
+  if (estado === "descartado") return { ok: true, archivado: null };
+
+  const archivado = await queryOne<{ id: string; nombre: string }>(
+    `UPDATE productos SET estado = 'archivado'
+      WHERE id = $1 AND estado <> 'archivado'
+      RETURNING id::text AS id, nombre`,
+    [result.producto_b_id],
+  );
+  return { ok: true, archivado };
 }
 
 // --- Respaldo sin IA: similitud de texto (Levenshtein) ---------------------

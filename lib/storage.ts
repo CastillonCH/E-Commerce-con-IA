@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { APP_CONFIG } from "./config";
 
@@ -44,6 +44,44 @@ export async function guardarImagenProducto(archivo: File): Promise<string> {
   // producto_imagenes.url exige una URL absoluta (ver migración 001) — una
   // ruta relativa como "/uploads/..." nunca la cumple, con o sin https.
   return `${APP_CONFIG.siteUrl}/uploads/productos/${nombreArchivo}`;
+}
+
+// Nombre de archivo que genera guardarImagenProducto: <uuid>.<ext>. Solo se
+// borran archivos con esta forma exacta (nunca una ruta armada con lo que
+// venga en la URL, para no salir de la carpeta de fotos).
+const NOMBRE_SUBIDO = /\/(?:uploads\/)?productos\/([0-9a-f-]{36}\.(?:png|jpg|webp))$/i;
+
+/**
+ * Borra la foto de un producto que se eliminó definitivamente. Solo toca
+ * fotos que subió la propia app (public/uploads/productos o el contenedor
+ * "productos" de Azure); una URL externa (p. ej. las de Unsplash de los
+ * datos semilla) se ignora. Nunca lanza: si no se puede borrar, queda un
+ * archivo huérfano, no un producto a medio eliminar.
+ */
+export async function eliminarImagenProducto(url: string): Promise<void> {
+  let ruta: string;
+  try {
+    ruta = new URL(url).pathname;
+  } catch {
+    return;
+  }
+  const nombreArchivo = NOMBRE_SUBIDO.exec(ruta)?.[1];
+  if (!nombreArchivo) return;
+
+  try {
+    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    if (connectionString && !ruta.startsWith("/uploads/")) {
+      const { BlobServiceClient } = await import("@azure/storage-blob");
+      const cliente = BlobServiceClient.fromConnectionString(connectionString);
+      await cliente.getContainerClient("productos").deleteBlob(nombreArchivo, { deleteSnapshots: "include" });
+      return;
+    }
+    if (ruta.startsWith("/uploads/productos/")) {
+      await unlink(path.join(process.cwd(), "public", "uploads", "productos", nombreArchivo));
+    }
+  } catch {
+    // archivo ya borrado o sin permisos: no bloquea la eliminación
+  }
 }
 
 async function subirAAzureBlob(

@@ -15,6 +15,9 @@ const ERROR_MESSAGES: Record<string, string> = {
     "No se pudo completar el ingreso con Google. Intenta de nuevo.",
   google_not_configured:
     "El ingreso con Google todavía no está configurado en este entorno.",
+  account_disabled: "Esta cuenta está desactivada. Contacta al administrador de NovaStore.",
+  staff_account:
+    "Esa cuenta de Google es del personal de NovaStore. Ingresa por el acceso interno.",
 };
 
 function AuthForm() {
@@ -32,11 +35,15 @@ function AuthForm() {
   const [error, setError] = useState<string | null>(
     errorCode ? (ERROR_MESSAGES[errorCode] ?? null) : null,
   );
+  // La cuenta existe pero es del personal (admin/catálogo): este login es solo para
+  // clientes, así que se le ofrece ir al acceso interno.
+  const [esPersonal, setEsPersonal] = useState(errorCode === "staff_account");
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    setEsPersonal(false);
 
     const endpoint = tab === "login" ? "/api/auth/login" : "/api/auth/register";
     const body =
@@ -53,6 +60,7 @@ function AuthForm() {
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       setError(data?.detail ?? "No se pudo completar la solicitud.");
+      setEsPersonal(data?.staff === true);
       return;
     }
 
@@ -138,7 +146,17 @@ function AuthForm() {
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              {error}
+              <div>
+                {error}
+                {esPersonal && (
+                  <Link
+                    href="/admin/login"
+                    className="mt-1 block font-semibold underline underline-offset-2"
+                  >
+                    Ir al acceso interno
+                  </Link>
+                )}
+              </div>
             </div>
           )}
 

@@ -1,14 +1,19 @@
 import { redirect } from "next/navigation";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { getSession } from "@/lib/auth";
+import { canManageProducts, getSession } from "@/lib/auth";
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // getSession() ya compara el rol con la base: una cuenta que dejó de ser
+  // del personal (o que se borró) queda fuera aquí mismo,
+  // aunque proxy.ts lo haya dejado pasar por el rol viejo de su cookie.
   const session = await getSession();
-  if (!session) redirect("/admin/login");
+  if (!session || !canManageProducts(session.role)) redirect("/admin/login");
+  // Contraseña temporal (cuenta nueva o restablecida): primero la cambia.
+  if (session.debeCambiarPassword) redirect("/admin/cambiar-clave");
 
   return (
     // En escritorio la barra lateral queda fija (sticky, alto de pantalla)

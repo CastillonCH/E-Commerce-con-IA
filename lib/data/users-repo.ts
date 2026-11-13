@@ -1,6 +1,7 @@
 import "server-only";
+import { randomInt } from "crypto";
 import bcrypt from "bcryptjs";
-import type { UserRole, Vendedor, VendorStatus } from "@/types";
+import type { UserRole } from "@/types";
 import { query, queryOne, isPgError, PG_ERROR } from "@/lib/db";
 
 export interface UserRecord {
@@ -10,6 +11,10 @@ export interface UserRecord {
   role: UserRole;
   passwordHash: string;
   fechaRegistro: string;
+  // false = cuenta desactivada: no puede iniciar sesión.
+  activo: boolean;
+  // true = tiene una contraseña temporal y debe cambiarla al ingresar.
+  debeCambiarPassword: boolean;
 }
 
 interface UsuarioRow {
@@ -19,6 +24,8 @@ interface UsuarioRow {
   rol: UserRole;
   password_hash: string | null;
   creado_en: Date;
+  activo: boolean;
+  debe_cambiar_password: boolean;
 }
 
 function toUserRecord(row: UsuarioRow): UserRecord {
@@ -29,13 +36,17 @@ function toUserRecord(row: UsuarioRow): UserRecord {
     role: row.rol,
     passwordHash: row.password_hash ?? "",
     fechaRegistro: row.creado_en.toISOString().slice(0, 10),
+    activo: row.activo,
+    debeCambiarPassword: row.debe_cambiar_password,
   };
 }
+
+const COLUMNAS = `id::text, nombre, email::text, rol, password_hash, creado_en, activo, debe_cambiar_password`;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {
   // `email` es citext en la base: la comparación ya ignora mayúsculas/minúsculas.
   const row = await queryOne<UsuarioRow>(
-    `SELECT id::text, nombre, email::text, rol, password_hash, creado_en
+    `SELECT ${COLUMNAS}
        FROM usuarios WHERE email = $1`,
     [email.trim()],
   );
@@ -60,7 +71,7 @@ export async function createClient(input: {
     const row = await queryOne<UsuarioRow>(
       `INSERT INTO usuarios (nombre, email, password_hash, proveedor, rol)
        VALUES ($1, $2, $3, 'credentials', 'CLIENT')
-       RETURNING id::text, nombre, email::text, rol, password_hash, creado_en`,
+       RETURNING ${COLUMNAS}`,
       [input.name, input.email.trim(), passwordHash],
     );
     return toUserRecord(row!);
@@ -83,135 +94,171 @@ export async function upsertGoogleUser(input: {
   const row = await queryOne<UsuarioRow>(
     `INSERT INTO usuarios (nombre, email, proveedor, google_sub, rol)
      VALUES ($1, $2, 'google', $3, 'CLIENT')
-     RETURNING id::text, nombre, email::text, rol, password_hash, creado_en`,
+     RETURNING ${COLUMNAS}`,
     [input.name, input.email.trim(), input.sub],
   );
   return toUserRecord(row!);
 }
 
-// Aprueba (o crea ya aprobada) la ficha de vendedor de un usuario; el
-// trigger trg_vendedores_sync_rol de la base pasa su rol a SELLER.
-export async function promoteToSeller(input: {
-  email: string;
-  nombre: string;
-}): Promise<UserRecord> {
-  let usuario = await findUserByEmail(input.email);
-  usuario ??= await createClient({
-    name: input.nombre,
-    email: input.email,
-    password: crypto.randomUUID(),
-  });
-
-  await query(
-    `INSERT INTO vendedores (usuario_id, nombre_comercial, estado)
-     VALUES ($1, $2, 'aprobado')
-     ON CONFLICT (usuario_id)
-     DO UPDATE SET estado = 'aprobado', nombre_comercial = EXCLUDED.nombre_comercial`,
-    [usuario.id, input.nombre],
-  );
-
-  const updated = await findUserByEmail(input.email);
-  return updated!;
-}
-
-// vendedores.nombre_comercial (el nombre de la tienda) no tiene por qué
-// coincidir con el texto de `marca` en un producto ("SoundMax Perú" vs.
-// "SoundMax"): este es el único vínculo confiable entre una sesión SELLER y
-// su fila en `vendedores` — usado por products-repo.ts al dar de alta un
-// producto.
-export async function getVendedorIdByEmail(email: string): Promise<string | null> {
-  const row = await queryOne<{ id: string }>(
-    `SELECT v.id::text AS id
-       FROM vendedores v
-       JOIN usuarios u ON u.id = v.usuario_id
-      WHERE u.email = $1 AND v.estado = 'aprobado'`,
-    [email.trim()],
-  );
-  return row?.id ?? null;
-}
-
 export async function listClients(): Promise<UserRecord[]> {
   const rows = await query<UsuarioRow>(
-    `SELECT id::text, nombre, email::text, rol, password_hash, creado_en
+    `SELECT ${COLUMNAS}
        FROM usuarios WHERE rol = 'CLIENT' ORDER BY creado_en`,
   );
   return rows.map(toUserRecord);
 }
 
-export async function listSellers(): Promise<UserRecord[]> {
-  const rows = await query<UsuarioRow>(
-    `SELECT id::text, nombre, email::text, rol, password_hash, creado_en
-       FROM usuarios WHERE rol = 'SELLER' ORDER BY creado_en`,
-  );
-  return rows.map(toUserRecord);
-}
+// --- Cuentas del personal (/admin/personal) --------------------------------
+// Los clientes se registran solos en /login; el personal NUNCA: lo crea un
+// ADMIN con una contraseña temporal que se debe cambiar al primer ingreso
+// (el administrador no conoce la contraseña definitiva de nadie). Una cuenta
+// del personal no se borra: se desactiva, para conservar el historial de
+// quién revisó o aprobó cada producto (revisado_por). La base garantiza que
+// siempre quede al menos un ADMIN activo (trg_usuarios_ultimo_admin).
 
-interface VendedorRow {
+export type RolPersonal = "ADMIN" | "CATALOGO";
+
+export interface MiembroPersonal {
   id: string;
   nombre: string;
   email: string;
-  categoria: string | null;
-  estado: VendorStatus;
-  fecha: Date;
-  productos: number;
+  rol: RolPersonal;
+  activo: boolean;
+  debeCambiarPassword: boolean;
+  ultimoAcceso: string | null;
+  creadoEn: string;
 }
 
-function toVendedor(row: VendedorRow): Vendedor {
-  return {
+export class PersonalError extends Error {}
+
+export async function listPersonal(): Promise<MiembroPersonal[]> {
+  const rows = await query<{
+    id: string;
+    nombre: string;
+    email: string;
+    rol: RolPersonal;
+    activo: boolean;
+    debe_cambiar_password: boolean;
+    ultimo_acceso: Date | null;
+    creado_en: Date;
+  }>(
+    `SELECT id::text, nombre, email::text, rol, activo, debe_cambiar_password, ultimo_acceso, creado_en
+       FROM usuarios
+      WHERE rol <> 'CLIENT'
+      ORDER BY activo DESC, rol, nombre`,
+  );
+  return rows.map((row) => ({
     id: row.id,
     nombre: row.nombre,
     email: row.email,
-    categoria: row.categoria,
-    estado: row.estado,
-    fecha: row.fecha.toISOString().slice(0, 10),
-    productos: Number(row.productos),
-  };
+    rol: row.rol,
+    activo: row.activo,
+    debeCambiarPassword: row.debe_cambiar_password,
+    ultimoAcceso: row.ultimo_acceso?.toISOString() ?? null,
+    creadoEn: row.creado_en.toISOString(),
+  }));
 }
 
-// Solicitudes de vendedor a la espera de aprobación/rechazo.
-export async function listPendingVendedores(): Promise<Vendedor[]> {
-  const rows = await query<VendedorRow>(
-    `SELECT * FROM v_admin_vendedores WHERE estado = 'pendiente' ORDER BY fecha`,
-  );
-  return rows.map(toVendedor);
+// Sin caracteres que se confunden al dictarla o copiarla (0/O, 1/l/I).
+const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+/** Contraseña temporal aleatoria (criptográficamente segura). */
+export function generarPasswordTemporal(longitud = 12): string {
+  return Array.from({ length: longitud }, () => ALFABETO[randomInt(ALFABETO.length)]).join("");
 }
 
-// Vendedores ya aprobados, operando en la tienda.
-export async function listActiveVendedores(): Promise<Vendedor[]> {
-  const rows = await query<VendedorRow>(
-    `SELECT * FROM v_admin_vendedores WHERE estado = 'aprobado' ORDER BY nombre`,
-  );
-  return rows.map(toVendedor);
+/**
+ * Crea una cuenta del personal con una contraseña temporal. Devuelve esa
+ * contraseña UNA sola vez, para que el administrador se la entregue al
+ * empleado; en la base solo queda su hash.
+ */
+export async function crearMiembroPersonal(input: {
+  nombre: string;
+  email: string;
+  rol: RolPersonal;
+}): Promise<{ id: string; passwordTemporal: string }> {
+  const passwordTemporal = generarPasswordTemporal();
+  const passwordHash = await bcrypt.hash(passwordTemporal, 10);
+  try {
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO usuarios (nombre, email, password_hash, proveedor, rol, debe_cambiar_password)
+       VALUES ($1, $2, $3, 'credentials', $4, true)
+       RETURNING id::text AS id`,
+      [input.nombre, input.email.trim(), passwordHash, input.rol],
+    );
+    return { id: row!.id, passwordTemporal };
+  } catch (error) {
+    if (isPgError(error, PG_ERROR.UNIQUE_VIOLATION)) {
+      throw new PersonalError(
+        "Ya existe una cuenta con ese correo. Si es de un cliente, el empleado debe usar otro correo (el de la empresa).",
+      );
+    }
+    throw error;
+  }
 }
 
-export async function approveVendedorApplication(
-  vendedorId: string,
-  adminEmail: string,
-): Promise<boolean> {
-  const row = await queryOne<{ id: string }>(
-    `UPDATE vendedores
-        SET estado = 'aprobado',
-            revisado_por = (SELECT id FROM usuarios WHERE email = $2)
-      WHERE id = $1 AND estado = 'pendiente'
-      RETURNING id`,
-    [vendedorId, adminEmail],
-  );
-  return row !== null;
+async function actualizarMiembro(
+  id: string,
+  actorEmail: string,
+  set: string,
+  params: unknown[],
+): Promise<void> {
+  const actor = await findUserByEmail(actorEmail);
+  if (actor?.id === id) {
+    throw new PersonalError("No puedes cambiar tu propia cuenta desde aquí.");
+  }
+  try {
+    const row = await queryOne<{ id: string }>(
+      `UPDATE usuarios SET ${set} WHERE id = $1 AND rol <> 'CLIENT' RETURNING id::text AS id`,
+      [id, ...params],
+    );
+    if (!row) throw new PersonalError("Esa cuenta no existe o no es del personal.");
+  } catch (error) {
+    if (isPgError(error, PG_ERROR.CHECK_VIOLATION)) {
+      throw new PersonalError("Debe quedar al menos un administrador activo.");
+    }
+    throw error;
+  }
 }
 
-export async function rejectVendedorApplication(
-  vendedorId: string,
-  adminEmail: string,
-  motivo = "Rechazado por el administrador.",
-): Promise<boolean> {
-  const row = await queryOne<{ id: string }>(
-    `UPDATE vendedores
-        SET estado = 'rechazado',
-            motivo_rechazo = $3,
-            revisado_por = (SELECT id FROM usuarios WHERE email = $2)
-      WHERE id = $1 AND estado = 'pendiente'
-      RETURNING id`,
-    [vendedorId, adminEmail, motivo],
+/** Activa o desactiva una cuenta del personal (nunca la propia). */
+export async function setMiembroActivo(id: string, activo: boolean, actorEmail: string): Promise<void> {
+  await actualizarMiembro(id, actorEmail, "activo = $2", [activo]);
+}
+
+/** Cambia el rol entre ADMIN y CATALOGO (nunca el propio). */
+export async function setMiembroRol(id: string, rol: RolPersonal, actorEmail: string): Promise<void> {
+  await actualizarMiembro(id, actorEmail, "rol = $2", [rol]);
+}
+
+/**
+ * Para quien olvidó su contraseña: genera una temporal nueva y lo obliga a
+ * cambiarla al ingresar. Devuelve la temporal una sola vez.
+ */
+export async function restablecerPasswordMiembro(id: string, actorEmail: string): Promise<string> {
+  const passwordTemporal = generarPasswordTemporal();
+  const passwordHash = await bcrypt.hash(passwordTemporal, 10);
+  await actualizarMiembro(id, actorEmail, "password_hash = $2, debe_cambiar_password = true", [passwordHash]);
+  return passwordTemporal;
+}
+
+/** Cambio de contraseña del propio usuario (verifica la actual). */
+export async function cambiarPassword(
+  email: string,
+  actual: string,
+  nueva: string,
+): Promise<"ok" | "actual_incorrecta" | "igual_a_la_actual"> {
+  const usuario = await findUserByEmail(email);
+  if (!usuario || !(await verifyPassword(usuario, actual))) return "actual_incorrecta";
+  if (actual === nueva) return "igual_a_la_actual";
+  const passwordHash = await bcrypt.hash(nueva, 10);
+  await query(
+    `UPDATE usuarios SET password_hash = $2, debe_cambiar_password = false WHERE id = $1`,
+    [usuario.id, passwordHash],
   );
-  return row !== null;
+  return "ok";
+}
+
+export async function registrarAcceso(id: string): Promise<void> {
+  await query(`UPDATE usuarios SET ultimo_acceso = now() WHERE id = $1`, [id]);
 }

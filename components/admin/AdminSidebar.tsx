@@ -15,6 +15,9 @@ import {
   LogOut,
   Menu,
   Store,
+  Truck,
+  UserCog,
+  KeyRound,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,9 +58,15 @@ const NAV_ITEMS = [
   },
   { href: "/admin/clientes", label: "Clientes", icon: Users, adminOnly: true },
   {
-    href: "/admin/vendedores",
-    label: "Vendedores",
-    icon: Users,
+    href: "/admin/proveedores",
+    label: "Proveedores",
+    icon: Truck,
+    adminOnly: true,
+  },
+  {
+    href: "/admin/personal",
+    label: "Personal",
+    icon: UserCog,
     adminOnly: true,
   },
   {
@@ -90,7 +99,7 @@ export function AdminSidebar({ session }: { session: Session }) {
     (item) => !item.adminOnly || session.role === "ADMIN",
   );
   const activo = activeHref(pathname, items.map((item) => item.href));
-  const panel = session.role === "ADMIN" ? "Panel de administrador" : "Panel de vendedor";
+  const panel = session.role === "ADMIN" ? "Panel de administrador" : "Panel de catálogo";
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -192,6 +201,13 @@ export function AdminSidebar({ session }: { session: Session }) {
           >
             <Store className="h-4 w-4" />
             Ver tienda
+          </Link>
+          <Link
+            href="/admin/cambiar-clave"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            <KeyRound className="h-4 w-4" />
+            Cambiar contraseña
           </Link>
           <ThemeToggle
             showLabel

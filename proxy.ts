@@ -5,7 +5,8 @@ import { verifySession } from "@/lib/session";
 
 const ADMIN_ONLY_PATHS = [
   "/admin/dashboard",
-  "/admin/vendedores",
+  "/admin/proveedores",
+  "/admin/personal",
   "/admin/clientes",
   "/admin/pedidos",
   "/admin/revision",

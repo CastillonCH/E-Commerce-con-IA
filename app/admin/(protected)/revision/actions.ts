@@ -46,15 +46,29 @@ export async function approveReviewAction(
   }
 }
 
+const rejectSchema = z.object({
+  productId: z.string().min(1),
+  motivo: z
+    .string()
+    .trim()
+    .min(5, "Indica el motivo del rechazo (mínimo 5 caracteres).")
+    .max(300, "El motivo no puede superar los 300 caracteres."),
+});
+
+// El motivo es obligatorio: es lo que ve el personal de catálogo para
+// saber qué corregir antes de reenviar el producto.
 export async function rejectReviewAction(
   productId: string,
+  motivo: string,
 ): Promise<ReviewActionResult> {
   if (!(await requireAdmin())) return { success: false, error: "No autorizado." };
 
-  const parsed = schema.pick({ productId: true }).safeParse({ productId });
-  if (!parsed.success) return { success: false, error: "Datos inválidos." };
+  const parsed = rejectSchema.safeParse({ productId, motivo });
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
 
-  const ok = await rejectPendingReview(parsed.data.productId);
+  const ok = await rejectPendingReview(parsed.data.productId, parsed.data.motivo);
   if (!ok) return { success: false, error: "El producto ya no está en revisión." };
 
   return { success: true };

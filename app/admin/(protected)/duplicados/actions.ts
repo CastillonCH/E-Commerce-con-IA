@@ -12,6 +12,8 @@ const schema = z.object({
 export interface ResolveDuplicateResult {
   success: boolean;
   error?: string;
+  // Nombre del producto que se archivó al confirmar (la copia más nueva).
+  archivado?: string;
 }
 
 export async function resolveDuplicateAction(
@@ -27,9 +29,9 @@ export async function resolveDuplicateAction(
   if (!parsed.success) return { success: false, error: "Datos inválidos." };
 
   try {
-    const ok = await resolveDuplicate(parsed.data.id, parsed.data.estado, session.email);
-    if (!ok) return { success: false, error: "Ese par ya fue revisado." };
-    return { success: true };
+    const result = await resolveDuplicate(parsed.data.id, parsed.data.estado, session.email);
+    if (!result.ok) return { success: false, error: "Ese par ya fue revisado." };
+    return { success: true, archivado: result.archivado?.nombre };
   } catch (error) {
     const message = error instanceof Error ? error.message : "No se pudo registrar la decisión.";
     return { success: false, error: message };

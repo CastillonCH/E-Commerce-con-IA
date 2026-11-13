@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 
 export function AISuggestionPanel({
   resultado,
-  categoriaVendedor,
+  categoriaManual,
 }: {
   resultado: AIResultado;
-  categoriaVendedor: string;
+  categoriaManual: string;
 }) {
-  const coincide = resultado.categoria === categoriaVendedor;
+  const coincide = resultado.categoria === categoriaManual;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -43,7 +43,7 @@ export function AISuggestionPanel({
         ) : (
           <>
             <XCircle className="h-3.5 w-3.5" />
-            No coincide con tu elección (&ldquo;{categoriaVendedor}&rdquo;)
+            No coincide con tu elección (&ldquo;{categoriaManual}&rdquo;)
           </>
         )}
       </p>

@@ -99,23 +99,23 @@ export async function obtenerMetricasClasificacion(): Promise<MetricasClasificac
 
 export interface LineaBaseCategorizacion {
   productosConCategoriaFinal: number;
-  conCategoriaDelVendedor: number;
-  malCategorizadosPorVendedor: number;
-  pctErrorVendedor: number | null;
+  conCategoriaManual: number;
+  malCategorizadosManual: number;
+  pctErrorManual: number | null;
 }
 
 export async function obtenerLineaBase(): Promise<LineaBaseCategorizacion> {
   const row = await queryOne<{
     productos_con_categoria_final: number;
-    con_categoria_del_vendedor: number;
-    mal_categorizados_por_vendedor: number;
-    pct_error_vendedor: number | null;
+    con_categoria_manual: number;
+    mal_categorizados_manual: number;
+    pct_error_manual: number | null;
   }>(`SELECT * FROM v_linea_base_categorizacion`);
   return {
     productosConCategoriaFinal: Number(row?.productos_con_categoria_final ?? 0),
-    conCategoriaDelVendedor: Number(row?.con_categoria_del_vendedor ?? 0),
-    malCategorizadosPorVendedor: Number(row?.mal_categorizados_por_vendedor ?? 0),
-    pctErrorVendedor: row?.pct_error_vendedor ?? null,
+    conCategoriaManual: Number(row?.con_categoria_manual ?? 0),
+    malCategorizadosManual: Number(row?.mal_categorizados_manual ?? 0),
+    pctErrorManual: row?.pct_error_manual ?? null,
   };
 }
 

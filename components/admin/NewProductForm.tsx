@@ -1,0 +1,252 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm, Controller, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
+import { DEPARTAMENTOS, CATEGORIAS_IA } from "@/lib/taxonomy";
+import { createProductAction } from "@/app/admin/(protected)/productos/actions";
+import { Button } from "@/components/ui/Button";
+import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/Input";
+import { ImageDropzone } from "@/components/admin/ImageDropzone";
+import { AISuggestionPanel } from "@/components/admin/AISuggestionPanel";
+import type { AIResultado, Proveedor } from "@/types";
+
+type ProveedorOpcion = Pick<Proveedor, "id" | "nombre">;
+
+const productSchema = z.object({
+  nombre: z.string().trim().min(2, "El nombre es muy corto"),
+  descripcion: z
+    .string()
+    .trim()
+    .min(20, "Escribe al menos 20 caracteres")
+    .max(2000, "Máximo 2000 caracteres"),
+  precio: z.coerce.number().positive("El precio debe ser mayor a 0"),
+  stock: z.coerce.number().int().nonnegative("El stock no puede ser negativo"),
+  marca: z.string().trim().min(2, "La marca es obligatoria"),
+  departamento: z.enum(DEPARTAMENTOS, {
+    message: "Selecciona un departamento",
+  }),
+  categoriaManual: z.string().min(1, "Selecciona una categoría"),
+  proveedorId: z.string(),
+  imagen: z.instanceof(File, {
+    message: "La foto del producto es obligatoria",
+  }),
+});
+
+type ProductFormInput = z.input<typeof productSchema>;
+type ProductFormValues = z.output<typeof productSchema>;
+
+export function NewProductForm({ proveedores }: { proveedores: ProveedorOpcion[] }) {
+  const router = useRouter();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [resultado, setResultado] = useState<AIResultado | null>(null);
+  const [categoriaElegida, setCategoriaElegida] = useState<string | null>(null);
+  const [destino, setDestino] = useState<{ href: string; label: string } | null>(null);
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ProductFormInput, unknown, ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      nombre: "",
+      descripcion: "",
+      marca: "",
+      precio: 0,
+      stock: 0,
+      categoriaManual: "",
+      proveedorId: "",
+    },
+  });
+
+  const departamento = useWatch({ control, name: "departamento" });
+  const categoriasDisponibles = departamento ? CATEGORIAS_IA[departamento] : [];
+
+  async function onSubmit(values: ProductFormValues) {
+    setIsAnalyzing(true);
+    setResultado(null);
+    setDestino(null);
+    const result = await createProductAction(values);
+    setIsAnalyzing(false);
+
+    if (!result.success) {
+      toast.error(result.error ?? "No se pudo guardar el producto.");
+      return;
+    }
+
+    if (result.avisoIA) toast(result.avisoIA);
+    if (result.resultado) setResultado(result.resultado);
+    setCategoriaElegida(values.categoriaManual);
+
+    if (result.pendingReview) {
+      toast.success("Producto guardado — queda en revisión antes de publicarse.");
+      setDestino({ href: "/admin/productos?estado=pendiente_revision", label: "Ver productos en revisión" });
+      return;
+    }
+
+    toast.success(
+      `Producto guardado y publicado${result.resultado ? ` como "${result.resultado.categoria}"` : ""}.`,
+    );
+    setDestino({ href: "/admin/productos", label: "Ir a Productos" });
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h1 className="mb-6 text-2xl font-semibold text-slate-900">
+        Nuevo producto
+      </h1>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+        <div>
+          <Label htmlFor="nombre">Nombre</Label>
+          <Input
+            id="nombre"
+            {...register("nombre")}
+            placeholder="Audífonos Inalámbricos Pro"
+          />
+          <FieldError message={errors.nombre?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="descripcion">Descripción</Label>
+          <Textarea
+            id="descripcion"
+            {...register("descripcion")}
+            placeholder="Describe el producto: material, características, qué lo hace distinto..."
+          />
+          <FieldError message={errors.descripcion?.message} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="precio">Precio</Label>
+            <Input
+              id="precio"
+              type="number"
+              step="0.01"
+              min="0"
+              {...register("precio")}
+            />
+            <FieldError message={errors.precio?.message} />
+          </div>
+          <div>
+            <Label htmlFor="stock">Stock</Label>
+            <Input id="stock" type="number" min="0" {...register("stock")} />
+            <FieldError message={errors.stock?.message} />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="marca">Marca</Label>
+          <Input id="marca" {...register("marca")} placeholder="SoundMax" />
+          <FieldError message={errors.marca?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="departamento">Departamento</Label>
+          <Select
+            id="departamento"
+            defaultValue=""
+            {...register("departamento")}
+          >
+            <option value="" disabled>
+              Selecciona un departamento
+            </option>
+            {DEPARTAMENTOS.map((departamentoOpcion) => (
+              <option key={departamentoOpcion} value={departamentoOpcion}>
+                {departamentoOpcion}
+              </option>
+            ))}
+          </Select>
+          <FieldError message={errors.departamento?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="categoriaManual">
+            Categoría (la que tú elijas, no la de la IA)
+          </Label>
+          <Select
+            id="categoriaManual"
+            defaultValue=""
+            disabled={!departamento}
+            {...register("categoriaManual")}
+          >
+            <option value="" disabled>
+              {departamento ? "Selecciona una categoría" : "Elige primero un departamento"}
+            </option>
+            {categoriasDisponibles.map((categoria) => (
+              <option key={categoria} value={categoria}>
+                {categoria}
+              </option>
+            ))}
+          </Select>
+          <FieldError message={errors.categoriaManual?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="proveedorId">Proveedor (opcional)</Label>
+          <Select id="proveedorId" {...register("proveedorId")}>
+            <option value="">Sin proveedor</option>
+            {proveedores.map((proveedor) => (
+              <option key={proveedor.id} value={proveedor.id}>
+                {proveedor.nombre}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-slate-500">
+            A quién le compra NovaStore este producto. No cambia si se vende.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="imagen">Foto del producto</Label>
+          <Controller
+            name="imagen"
+            control={control}
+            render={({ field }) => (
+              <ImageDropzone
+                onFileSelected={(file) => field.onChange(file)}
+                error={errors.imagen?.message}
+              />
+            )}
+          />
+        </div>
+
+        <Button
+          type="submit"
+          variant="dark"
+          disabled={isAnalyzing}
+          className="mt-2"
+        >
+          {isAnalyzing ? "Analizando..." : "Guardar producto"}
+        </Button>
+      </form>
+
+      {destino && (
+        <div className="mt-6 flex flex-col gap-4">
+          {resultado && categoriaElegida && (
+            <AISuggestionPanel resultado={resultado} categoriaManual={categoriaElegida} />
+          )}
+          <Button type="button" variant="dark" onClick={() => router.push(destino.href)}>
+            {destino.label}
+          </Button>
+        </div>
+      )}
+
+      {isAnalyzing && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white/90 backdrop-blur-sm">
+          <Loader2 className="h-10 w-10 animate-spin text-slate-900" />
+          <p className="text-sm font-medium text-slate-700">
+            Analizando imagen con Inteligencia Artificial...
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

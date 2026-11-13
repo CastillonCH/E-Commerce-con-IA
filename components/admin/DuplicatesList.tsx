@@ -40,7 +40,11 @@ export function DuplicatesList({ pairs }: { pairs: DetectedDuplicate[] }) {
     }
     setResueltos((prev) => new Set(prev).add(id));
     toast.success(
-      estado === "confirmado" ? `Confirmado como duplicado: ${nombre}` : `Descartado: ${nombre} no es un duplicado`,
+      estado === "confirmado"
+        ? result.archivado
+          ? `Confirmado como duplicado. Se archivó la copia más nueva: ${result.archivado}`
+          : `Confirmado como duplicado: ${nombre}`
+        : `Descartado: ${nombre} no es un duplicado`,
     );
     router.refresh();
   }
@@ -79,7 +83,7 @@ export function DuplicatesList({ pairs }: { pairs: DetectedDuplicate[] }) {
                 className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-50"
               >
                 <Check className="h-3.5 w-3.5" />
-                Es duplicado
+                Es duplicado (archivar el más nuevo)
               </button>
               <button
                 type="button"

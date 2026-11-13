@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("d. Roles de staff", () => {
+test.describe("d. Roles del personal", () => {
   test("un ADMIN entra al dashboard y puede ver pedidos y clientes", async ({ page }) => {
     await page.goto("/admin/login");
     await page.locator("#email").fill("admin@novastore.pe");
@@ -15,30 +15,31 @@ test.describe("d. Roles de staff", () => {
     await expect(page.getByRole("heading", { name: "Clientes" })).toBeVisible();
   });
 
-  test("un SELLER no puede ver /admin/pedidos ni /admin/clientes (redirige a su catálogo)", async ({ page }) => {
+  test("el personal de CATALOGO no puede ver pedidos, clientes ni proveedores (redirige a Productos)", async ({ page }) => {
     await page.goto("/admin/login");
-    await page.locator("#email").fill("contacto@soundmax.pe");
+    await page.locator("#email").fill("catalogo@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");
     await page.getByRole("button", { name: "Ingresar" }).click();
     await page.waitForURL(/admin\/productos/);
 
-    await page.goto("/admin/pedidos");
-    await page.waitForURL(/admin\/productos/);
+    for (const ruta of ["/admin/pedidos", "/admin/clientes", "/admin/proveedores"]) {
+      await page.goto(ruta);
+      await page.waitForURL(/admin\/productos/);
+    }
   });
 
-  test("un SELLER solo ve productos de su propia marca en /admin/productos", async ({ page }) => {
+  test("el personal de CATALOGO ve todo el catálogo de NovaStore, de todas las marcas", async ({ page }) => {
     await page.goto("/admin/login");
-    await page.locator("#email").fill("contacto@soundmax.pe");
+    await page.locator("#email").fill("catalogo@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");
     await page.getByRole("button", { name: "Ingresar" }).click();
     await page.waitForURL(/admin\/productos/);
 
-    const rows = page.locator("table tbody tr");
-    await expect(rows.first()).toBeVisible();
-    const marcas = await rows.locator("td").nth(1).allTextContents();
-    for (const marca of marcas) {
-      expect(marca.trim()).toBe("SoundMax");
-    }
+    await expect(page.locator("aside").getByText("Panel de catálogo")).toBeVisible();
+    const marcas = new Set(
+      (await page.locator("table tbody tr").locator("td:nth-child(2)").allTextContents()).map((m) => m.trim()),
+    );
+    expect(marcas.size).toBeGreaterThan(1);
   });
 
   test("un cliente no puede entrar al panel de administración", async ({ page }) => {

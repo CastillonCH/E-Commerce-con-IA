@@ -15,15 +15,15 @@ export default async function AdminReviewPage() {
         <p className="mt-1 text-sm text-slate-500">
           {REVIEW_POLICY === "todos" ? (
             <>
-              Cada ficha nueva pasa por acá antes de publicarse — el analista
-              confirma o corrige la categoría que sugiere la IA (política de
-              revisión: &ldquo;todos&rdquo;).
+              Cada ficha nueva o modificada pasa por acá antes de publicarse:
+              confirma o corrige la categoría que sugiere la IA, o recházala
+              con un motivo (política de revisión: &ldquo;todos&rdquo;).
             </>
           ) : (
             <>
-              Productos cuya clasificación automática tuvo una confianza menor
-              al {Math.round(REVIEW_THRESHOLD * 100)}% y esperan tu validación
-              antes de publicarse en la tienda.
+              La IA publica sola lo que clasifica con {Math.round(REVIEW_THRESHOLD * 100)}%
+              de confianza o más. Aquí llega lo dudoso y las fichas que se
+              editaron: confirma o corrige la categoría, o recházala con un motivo.
             </>
           )}
         </p>

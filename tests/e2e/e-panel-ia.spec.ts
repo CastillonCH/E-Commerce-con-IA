@@ -70,17 +70,17 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await simularServicioIA(request, false);
   });
 
-  test("vendedor da de alta con descripción y categoría -> panel de sugerencia -> admin revisa -> publicado", async ({
+  test("catálogo da de alta con descripción y categoría -> panel de sugerencia -> admin revisa -> publicado", async ({
     page,
     request,
   }) => {
     await simularServicioIA(request, false);
 
     await page.goto("/admin/login");
-    await page.locator("#email").fill("contacto@soundmax.pe");
+    await page.locator("#email").fill("catalogo@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");
     await page.getByRole("button", { name: "Ingresar" }).click();
-    await page.waitForURL(/admin\/productos/); // un SELLER no tiene /admin/dashboard (es adminOnly)
+    await page.waitForURL(/admin\/productos/); // CATALOGO no tiene /admin/dashboard (es adminOnly)
 
     await page.goto("/admin/productos/nuevo");
     await page.locator("#nombre").fill("Parlante E2E con IA");
@@ -91,7 +91,7 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await page.locator("#stock").fill("12");
     await page.locator("#marca").fill("SoundMax");
     await page.locator("#departamento").selectOption("Electrónica");
-    await page.locator("#categoriaVendedor").selectOption("Audio y audífonos");
+    await page.locator("#categoriaManual").selectOption("Audio y audífonos");
     await page
       .locator('input[type="file"]')
       .setInputFiles({ name: "parlante.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xdb]) });
@@ -106,12 +106,11 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await expect(page.getByText(/La IA sugiere: Audio y audífonos/)).toBeVisible();
     await expect(page.getByText("Coincide con la categoría que elegiste")).toBeVisible();
 
-    // El botón lleva a /admin/revision, pero esa ruta es solo para ADMIN
-    // (proxy.ts la redirige para un SELLER — defensa en profundidad, ver
-    // ADMIN_ONLY_PATHS): el vendedor nunca revisa sus propias fichas, solo
-    // un administrador. Entra ahora como admin para hacer la revisión real.
-    await page.getByRole("button", { name: "Ir a Revisión de IA" }).click();
-    await page.waitForURL(/admin\/productos$/);
+    // Quien carga no aprueba su propia ficha: lo ve en "En revisión" y la
+    // revisión la hace un ADMIN (/admin/revision es solo para ADMIN).
+    await page.getByRole("button", { name: "Ver productos en revisión" }).click();
+    await page.waitForURL(/admin\/productos\?estado=pendiente_revision/);
+    await expect(page.getByText("Parlante E2E con IA")).toBeVisible();
 
     // POST, como el botón real: /api/auth/logout no acepta GET (un goto
     // devolvía 405 y la página de error de Chrome cortaba el goto siguiente).
@@ -140,10 +139,10 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await simularServicioIA(request, true);
 
     await page.goto("/admin/login");
-    await page.locator("#email").fill("contacto@soundmax.pe");
+    await page.locator("#email").fill("catalogo@novastore.pe");
     await page.locator("#password").fill("NovaStore2026!");
     await page.getByRole("button", { name: "Ingresar" }).click();
-    await page.waitForURL(/admin\/productos/); // un SELLER no tiene /admin/dashboard (es adminOnly)
+    await page.waitForURL(/admin\/productos/); // CATALOGO no tiene /admin/dashboard (es adminOnly)
 
     await page.goto("/admin/productos/nuevo");
     await page.locator("#nombre").fill("Producto Sin IA Disponible E2E");
@@ -154,7 +153,7 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await page.locator("#stock").fill("4");
     await page.locator("#marca").fill("SoundMax");
     await page.locator("#departamento").selectOption("Electrónica");
-    await page.locator("#categoriaVendedor").selectOption("Audio y audífonos");
+    await page.locator("#categoriaManual").selectOption("Audio y audífonos");
     await page
       .locator('input[type="file"]')
       .setInputFiles({ name: "producto.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xdb]) });
@@ -164,7 +163,7 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
       timeout: 15_000,
     });
 
-    // Nunca bloquea al vendedor: igual se guarda, con un aviso, sin panel de sugerencia.
+    // Nunca bloquea al personal: igual se guarda, con un aviso, sin panel de sugerencia.
     await expect(page.getByText(/No se pudo contactar al servicio de IA/)).toBeVisible();
     await expect(page.getByText("Producto guardado — queda en revisión antes de publicarse.")).toBeVisible();
 

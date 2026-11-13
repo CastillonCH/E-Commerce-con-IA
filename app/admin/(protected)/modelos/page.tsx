@@ -153,17 +153,17 @@ export default async function AdminModelosPage() {
       {/* Línea base del problema (T1 1.2.1) */}
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">
-          Línea base: categorización manual del vendedor
+          Línea base: categorización manual (sin IA)
         </h2>
-        {lineaBase.conCategoriaDelVendedor === 0 ? (
-          <EstadoVacio mensaje="Todavía no hay productos con categoría elegida por el vendedor para medir esto." />
+        {lineaBase.conCategoriaManual === 0 ? (
+          <EstadoVacio mensaje="Todavía no hay productos con categoría elegida a mano para medir esto." />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Tarjeta etiqueta="Con categoría del vendedor" valor={lineaBase.conCategoriaDelVendedor} />
-            <Tarjeta etiqueta="Mal categorizados" valor={lineaBase.malCategorizadosPorVendedor} />
+            <Tarjeta etiqueta="Con categoría elegida a mano" valor={lineaBase.conCategoriaManual} />
+            <Tarjeta etiqueta="Mal categorizados" valor={lineaBase.malCategorizadosManual} />
             <Tarjeta
-              etiqueta="% de error del vendedor"
-              valor={lineaBase.pctErrorVendedor !== null ? `${lineaBase.pctErrorVendedor}%` : "—"}
+              etiqueta="% de error manual"
+              valor={lineaBase.pctErrorManual !== null ? `${lineaBase.pctErrorManual}%` : "—"}
             />
             <Tarjeta etiqueta="Meta del objetivo general" valor="≤ 5%" />
           </div>

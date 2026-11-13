@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
-import { findUserByEmail, verifyPassword } from "@/lib/data/users-repo";
+import { findUserByEmail, registrarAcceso, verifyPassword } from "@/lib/data/users-repo";
 
 // Deliberadamente SIN campo `role`: Zod descarta cualquier `role` que venga
 // en el body (comportamiento por defecto al no declarar la clave), así que
@@ -28,6 +28,17 @@ export async function POST(request: Request) {
   if (!user || user.role === "CLIENT") return genericError;
   if (!(await verifyPassword(user, parsed.data.password))) return genericError;
 
+  // Cuenta desactivada por un administrador: recién con la contraseña
+  // correcta se dice por qué no entra.
+  if (!user.activo) {
+    return NextResponse.json(
+      { detail: "Esta cuenta está desactivada. Contacta al administrador de NovaStore." },
+      { status: 403 },
+    );
+  }
+
+  await registrarAcceso(user.id);
+
   const token = await createSessionToken({
     role: user.role,
     name: user.nombre,
@@ -35,7 +46,13 @@ export async function POST(request: Request) {
     provider: "credentials",
   });
 
-  const response = NextResponse.json({ success: true, role: user.role });
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  // debeCambiarPassword: la cuenta tiene una contraseña temporal (la creó o
+  // restableció un administrador) y debe cambiarla antes de seguir.
+  const response = NextResponse.json({
+    success: true,
+    role: user.role,
+    debeCambiarPassword: user.debeCambiarPassword,
+  });
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(user.role));
   return response;
 }

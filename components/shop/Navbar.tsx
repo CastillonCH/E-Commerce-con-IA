@@ -208,7 +208,7 @@ export function Navbar({ session, menu }: NavbarProps) {
                         Panel{" "}
                         {session.role === "ADMIN"
                           ? "de administrador"
-                          : "de vendedor"}
+                          : "de catálogo"}
                       </Link>
                     )}
                     <form action="/api/auth/logout" method="post">
@@ -328,7 +328,7 @@ export function Navbar({ session, menu }: NavbarProps) {
                     Panel{" "}
                     {session.role === "ADMIN"
                       ? "de administrador"
-                      : "de vendedor"}
+                      : "de catálogo"}
                   </Link>
                 )}
                 <form action="/api/auth/logout" method="post">

@@ -8,7 +8,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import type { Product, AIResultado } from "@/types";
+import type { AIResultado, Proveedor } from "@/types";
+import type { AdminProduct } from "@/lib/data/products-repo";
+import { ETIQUETA_ESTADO } from "@/lib/catalogo";
 import { DEPARTAMENTOS, CATEGORIAS_IA } from "@/lib/taxonomy";
 import { updateProductAction } from "@/app/admin/(protected)/productos/actions";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +31,8 @@ const editSchema = z.object({
   departamento: z.enum(DEPARTAMENTOS, {
     message: "Selecciona un departamento",
   }),
-  categoriaVendedor: z.string().min(1, "Selecciona una categoría"),
+  categoriaManual: z.string().min(1, "Selecciona una categoría"),
+  proveedorId: z.string(),
   imagen: z.instanceof(File).optional(),
 });
 
@@ -38,10 +41,12 @@ type EditFormValues = z.output<typeof editSchema>;
 
 export function EditProductForm({
   product,
-  categoriaVendedorInicial,
+  categoriaManualInicial,
+  proveedores,
 }: {
-  product: Product;
-  categoriaVendedorInicial: string | null;
+  product: AdminProduct;
+  categoriaManualInicial: string | null;
+  proveedores: Pick<Proveedor, "id" | "nombre">[];
 }) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +68,8 @@ export function EditProductForm({
       precio: product.precio,
       stock: product.stock,
       departamento: product.departamento,
-      categoriaVendedor: categoriaVendedorInicial ?? "",
+      categoriaManual: categoriaManualInicial ?? "",
+      proveedorId: product.proveedorId ?? "",
     },
   });
 
@@ -85,15 +91,21 @@ export function EditProductForm({
     if (result.avisoIA) toast(result.avisoIA);
 
     if (!values.imagen) {
-      toast.success("Producto actualizado");
-      router.push("/admin/productos");
+      toast.success(
+        result.pendingReview
+          ? "Cambios guardados — el producto vuelve a revisión antes de publicarse."
+          : "Producto actualizado",
+      );
+      router.push(
+        result.pendingReview ? "/admin/productos?estado=pendiente_revision" : `/admin/productos?estado=${product.estado}`,
+      );
       return;
     }
 
     // Se reemplazó la foto: se volvió a clasificar — se queda en esta
     // página para mostrar el panel antes de navegar (F4.3/F4.4).
     if (result.resultado) setResultado(result.resultado);
-    setCategoriaElegida(values.categoriaVendedor);
+    setCategoriaElegida(values.categoriaManual);
     setVolvioARevision(Boolean(result.pendingReview));
     toast.success(
       result.pendingReview
@@ -104,9 +116,21 @@ export function EditProductForm({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">
+      <h1 className="mb-2 text-2xl font-semibold text-slate-900">
         Editar producto
       </h1>
+      <p className="mb-6 text-sm text-slate-500">
+        Estado: <span className="font-medium text-slate-700">{ETIQUETA_ESTADO[product.estado]}</span>.
+        Precio, stock, marca y proveedor se actualizan al instante. Si cambias el
+        nombre, la descripción, el departamento o la categoría, el producto
+        vuelve a revisión antes de seguir a la venta.
+      </p>
+      {product.motivoRechazo && (
+        <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p className="font-medium">Fue rechazado: {product.motivoRechazo}</p>
+          <p className="mt-0.5">Corrígelo y guarda: se reenvía a revisión.</p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         <div>
@@ -163,13 +187,13 @@ export function EditProductForm({
         </div>
 
         <div>
-          <Label htmlFor="categoriaVendedor">
+          <Label htmlFor="categoriaManual">
             Categoría (la que tú elijas, no la de la IA)
           </Label>
           <Select
-            id="categoriaVendedor"
-            defaultValue={categoriaVendedorInicial ?? ""}
-            {...register("categoriaVendedor")}
+            id="categoriaManual"
+            defaultValue={categoriaManualInicial ?? ""}
+            {...register("categoriaManual")}
           >
             <option value="" disabled>
               Selecciona una categoría
@@ -180,7 +204,22 @@ export function EditProductForm({
               </option>
             ))}
           </Select>
-          <FieldError message={errors.categoriaVendedor?.message} />
+          <FieldError message={errors.categoriaManual?.message} />
+        </div>
+
+        <div>
+          <Label htmlFor="proveedorId">Proveedor (opcional)</Label>
+          <Select id="proveedorId" defaultValue={product.proveedorId ?? ""} {...register("proveedorId")}>
+            <option value="">Sin proveedor</option>
+            {proveedores.map((proveedor) => (
+              <option key={proveedor.id} value={proveedor.id}>
+                {proveedor.nombre}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-slate-500">
+            A quién le compra NovaStore este producto. No cambia si se vende.
+          </p>
         </div>
 
         <div>
@@ -237,13 +276,13 @@ export function EditProductForm({
 
       {resultado && categoriaElegida && (
         <div className="mt-6 flex flex-col gap-4">
-          <AISuggestionPanel resultado={resultado} categoriaVendedor={categoriaElegida} />
+          <AISuggestionPanel resultado={resultado} categoriaManual={categoriaElegida} />
           <Button
             type="button"
             variant="dark"
-            onClick={() => router.push(volvioARevision ? "/admin/revision" : "/admin/productos")}
+            onClick={() => router.push(volvioARevision ? "/admin/productos?estado=pendiente_revision" : "/admin/productos")}
           >
-            {volvioARevision ? "Ir a Revisión de IA" : "Volver a Productos"}
+            {volvioARevision ? "Ver productos en revisión" : "Volver a Productos"}
           </Button>
         </div>
       )}
