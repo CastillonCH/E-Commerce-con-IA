@@ -104,4 +104,51 @@ test.describe("i. Carga asistida por la IA", () => {
     await expect(catalogo.getByTestId("modo-carga")).toHaveText("Con IA");
     await expect(catalogo.getByRole("region", { name: "Sugerencia de la IA" })).toBeVisible();
   });
+
+  test("sin IA: no ve a la IA ni al guardar, y el revisor ve la categoría de la persona", async ({ page, browser }) => {
+    await entrarComo(page, "admin@novastore.pe", /admin\/dashboard/);
+    await page.goto("/admin/personal");
+    const selector = page.getByLabel("Carga de productos de Analista de Catálogo");
+    await selector.selectOption("manual");
+    await expect(page.getByText("Analista de Catálogo ahora carga sin IA.")).toBeVisible();
+
+    try {
+      const catalogo = await (await browser.newContext()).newPage();
+      await entrarComo(catalogo, "catalogo@novastore.pe", /admin\/productos/);
+      await catalogo.goto("/admin/productos/nuevo");
+      await expect(catalogo.getByTestId("modo-carga")).toHaveText("Sin IA (medición)");
+      await llenarFotoYTexto(catalogo, "Licuadora Sin IA E2E");
+      await catalogo.locator("#departamento").selectOption("Hogar");
+      await catalogo.locator("#categoriaManual").selectOption("Electrodomésticos de cocina");
+      await catalogo.locator("#precio").fill("120");
+      await catalogo.locator("#stock").fill("3");
+      await catalogo.locator("#marca").fill("HomeChef");
+      await catalogo.getByRole("button", { name: "Guardar producto" }).click();
+      await expect(catalogo.getByText("Producto guardado — queda en revisión antes de publicarse.")).toBeVisible({
+        timeout: 15_000,
+      });
+      // Ni después de guardar ve lo que dijo la IA.
+      await expect(catalogo.getByText(/La IA sugiere/)).toHaveCount(0);
+
+      await page.goto("/admin/revision");
+      const ficha = page.getByRole("article", { name: "Revisión de Licuadora Sin IA E2E" });
+      if (!(await ficha.isVisible())) {
+        await page.getByRole("button", { name: "Licuadora Sin IA E2E", exact: true }).click();
+      }
+      await expect(ficha.getByTestId("modo-ficha")).toHaveText("Cargada sin IA");
+      await expect(ficha.getByText(/Quien la cargó eligió .Electrodomésticos de cocina./)).toBeVisible();
+      await expect(ficha.getByText(/La IA sugiere/)).toHaveCount(0);
+      await expect(ficha.locator("#categoria-final")).toHaveValue("Electrodomésticos de cocina");
+      await ficha.getByRole("button", { name: "Aprobar" }).click();
+      await expect(page.getByText("Licuadora Sin IA E2E publicado en la tienda.")).toBeVisible();
+
+      await page.goto("/admin/modelos");
+      await expect(page.getByRole("heading", { name: "Proceso completo: sin IA vs con IA" })).toBeVisible();
+      await expect(page.getByRole("table", { name: /Proceso completo/ })).toBeVisible();
+    } finally {
+      await page.goto("/admin/personal");
+      await selector.selectOption("asistido");
+      await expect(page.getByText("Analista de Catálogo ahora carga con IA.")).toBeVisible();
+    }
+  });
 });

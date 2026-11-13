@@ -885,6 +885,186 @@ EXCEPTION WHEN insufficient_privilege THEN
     RAISE WARNING 'No se pudo fijar search_path de la base; agrega options=-csearch_path=novastore,public a la cadena de conexión.';
 END $$;
 
+-- =============================================================================
+-- 9. PROCESO SIN IA vs CON IA (ver db/migraciones/006_proceso_sin_ia_vs_con_ia.sql)
+-- =============================================================================
+CREATE TYPE origen_sugerencia AS ENUM ('ia', 'persona');
+
+ALTER TABLE productos
+    ADD COLUMN categoria_ia_id   smallint     REFERENCES categorias(id),
+    ADD COLUMN confianza_ia      numeric(5,4) CHECK (confianza_ia BETWEEN 0 AND 1),
+    ADD COLUMN ia_no_disponible  boolean      NOT NULL DEFAULT false,
+    ADD COLUMN auto_publicado    boolean      NOT NULL DEFAULT false;
+COMMENT ON COLUMN productos.categoria_ia_id IS 'Sugerencia de la IA (fusión imagen + texto). En fichas sin IA se guarda pero no se muestra.';
+COMMENT ON COLUMN productos.ia_no_disponible IS 'Modo con IA pero no vio la sugerencia (la IA no respondió o guardó antes de que llegara): fuera de la medición.';
+COMMENT ON COLUMN productos.auto_publicado IS 'La IA la publicó sola al cargarla, sin revisión humana.';
+
+ALTER TABLE revisiones_categoria
+    ADD COLUMN origen_sugerencia origen_sugerencia NOT NULL DEFAULT 'ia',
+    ADD COLUMN modo_carga        modo_carga;
+COMMENT ON COLUMN revisiones_categoria.origen_sugerencia IS 'ia = el revisor vio la categoría de la IA; persona = vio la que eligió quien cargó (ficha sin IA).';
+
+CREATE TABLE rechazos_revision (
+    id                   bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    producto_id          bigint      NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    revisado_por         uuid        NOT NULL REFERENCES usuarios(id),
+    motivo               text        NOT NULL CHECK (length(btrim(motivo)) >= 5),
+    tiempo_revision_seg  integer     CHECK (tiempo_revision_seg >= 0),
+    modo_carga           modo_carga,
+    creado_en            timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_rechazos_producto ON rechazos_revision (producto_id, creado_en);
+
+-- Lista del experimento: fichas del conjunto de PRUEBA del dataset (no se
+-- usaron para entrenar) con su categoría correcta. La llena
+-- ml/experimento/preparar_experimento.py.
+CREATE TABLE experimento_fichas (
+    codigo                   varchar(12)  PRIMARY KEY,                -- EXP-001
+    grupo                    char(1)      NOT NULL CHECK (grupo IN ('A', 'B')),
+    nombre                   varchar(200) NOT NULL CHECK (length(btrim(nombre)) >= 2),
+    categoria_referencia_id  smallint     NOT NULL REFERENCES categorias(id),
+    fuente                   varchar(60)  NOT NULL,                   -- p. ej. 'test.csv#4515'
+    producto_id              bigint       UNIQUE REFERENCES productos(id) ON DELETE SET NULL,
+    creado_en                timestamptz  NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX ux_experimento_nombre ON experimento_fichas (lower(btrim(nombre)));
+COMMENT ON TABLE experimento_fichas IS 'Categoría correcta conocida para medir el error. No se muestra en la carga ni en la revisión.';
+
+-- Qué ve el revisor como propuesta. Ficha sin IA → la categoría que eligió
+-- la persona (sin pista de la IA). Con IA → la sugerencia fusionada; las
+-- fichas anteriores a la 006 usan la predicción más segura de un modelo.
+CREATE VIEW v_sugerencia_revision AS
+SELECT p.id AS producto_id,
+       s.origen,
+       CASE s.origen WHEN 'persona' THEN p.categoria_manual_id
+                     ELSE coalesce(p.categoria_ia_id, pred.categoria_predicha_id) END AS categoria_sugerida_id,
+       CASE s.origen WHEN 'ia' THEN coalesce(p.confianza_ia, pred.confianza) END    AS confianza,
+       CASE s.origen WHEN 'ia' THEN pred.id END                                       AS prediccion_id
+  FROM productos p
+  LEFT JOIN LATERAL (
+      SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST, id LIMIT 1
+  ) pred ON true
+  CROSS JOIN LATERAL (
+      SELECT CASE
+                 WHEN p.modo_carga = 'manual' AND p.categoria_manual_id IS NOT NULL THEN 'persona'
+                 WHEN coalesce(p.categoria_ia_id, pred.categoria_predicha_id) IS NOT NULL THEN 'ia'
+                 WHEN p.categoria_manual_id IS NOT NULL THEN 'persona'
+             END::origen_sugerencia AS origen
+  ) s;
+
+-- Primera decisión del revisor sobre cada ficha (aprobó o rechazó).
+CREATE VIEW v_primera_decision AS
+SELECT DISTINCT ON (producto_id)
+       producto_id, tipo, accion, tiempo_revision_seg, revisado_por, origen_sugerencia, creado_en
+  FROM (
+      SELECT r.producto_id, 'revision'::text AS tipo, r.accion::text AS accion, r.tiempo_revision_seg,
+             r.revisado_por, r.origen_sugerencia, r.creado_en, r.id
+        FROM revisiones_categoria r
+      UNION ALL
+      SELECT x.producto_id, 'rechazo', 'rechazada', x.tiempo_revision_seg,
+             x.revisado_por, NULL, x.creado_en, x.id
+        FROM rechazos_revision x
+  ) d
+ ORDER BY producto_id, creado_en, id;
+
+-- Proceso completo por modo. Cuenta solo la carga original (no ediciones
+-- posteriores), deja fuera las fichas con la IA caída y las que revisó la
+-- misma persona que las cargó. p_solo_experimento = solo las fichas
+-- enlazadas a experimento_fichas.
+CREATE FUNCTION fn_metricas_proceso(p_solo_experimento boolean DEFAULT false)
+RETURNS TABLE (
+    modo                     modo_carga,
+    fichas                   integer,
+    seg_carga_mediana        numeric,
+    pct_a_revision           numeric,
+    revisadas                integer,
+    seg_revision_mediana     numeric,
+    seg_proceso_mediana      numeric,
+    pct_correcciones         numeric,
+    con_referencia           integer,
+    pct_error_carga          numeric,
+    pct_error_ia             numeric,
+    pct_error_publicado      numeric
+)
+LANGUAGE sql STABLE
+SET search_path = novastore, public
+AS $$
+    WITH f AS (
+        SELECT p.modo_carga, p.tiempo_carga_seg, p.auto_publicado, p.estado,
+               p.categoria_manual_id, p.categoria_id, p.categoria_ia_id,
+               d.tipo, d.accion, d.tiempo_revision_seg,
+               coalesce(d.revisado_por = p.creado_por, false) AS autorrevision,
+               e.categoria_referencia_id AS ref
+          FROM productos p
+          LEFT JOIN v_primera_decision d ON d.producto_id = p.id AND NOT p.auto_publicado
+          LEFT JOIN experimento_fichas e ON e.producto_id = p.id
+         WHERE p.modo_carga IS NOT NULL
+           AND NOT p.ia_no_disponible
+           AND (NOT p_solo_experimento OR e.producto_id IS NOT NULL)
+    ), g AS (
+        SELECT f.*,
+               (f.tipo IS NOT NULL AND NOT f.autorrevision) AS decision_valida,
+               CASE WHEN f.auto_publicado THEN f.tiempo_carga_seg
+                    WHEN f.tipo IS NOT NULL AND NOT f.autorrevision
+                        THEN f.tiempo_carga_seg + f.tiempo_revision_seg
+               END AS seg_proceso
+          FROM f
+    )
+    SELECT g.modo_carga,
+           count(*)::int,
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.tiempo_carga_seg))::numeric, 1),
+           round(100.0 * count(*) FILTER (WHERE NOT g.auto_publicado) / count(*), 2),
+           count(*) FILTER (WHERE g.decision_valida)::int,
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.tiempo_revision_seg)
+                  FILTER (WHERE g.decision_valida))::numeric, 1),
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.seg_proceso))::numeric, 1),
+           round(100.0 * count(*) FILTER (WHERE g.decision_valida AND g.accion = 'corregida')
+                 / nullif(count(*) FILTER (WHERE g.decision_valida AND g.tipo = 'revision'), 0), 2),
+           count(*) FILTER (WHERE g.ref IS NOT NULL)::int,
+           round(100.0 * count(*) FILTER (WHERE g.ref IS NOT NULL AND g.categoria_manual_id IS DISTINCT FROM g.ref)
+                 / nullif(count(*) FILTER (WHERE g.ref IS NOT NULL), 0), 2),
+           round(100.0 * count(*) FILTER (WHERE g.ref IS NOT NULL AND g.categoria_ia_id <> g.ref)
+                 / nullif(count(*) FILTER (WHERE g.ref IS NOT NULL AND g.categoria_ia_id IS NOT NULL), 0), 2),
+           round(100.0 * count(*) FILTER (WHERE g.ref IS NOT NULL AND g.estado = 'publicado' AND g.categoria_id <> g.ref)
+                 / nullif(count(*) FILTER (WHERE g.ref IS NOT NULL AND g.estado = 'publicado' AND g.categoria_id IS NOT NULL), 0), 2)
+      FROM g
+     GROUP BY g.modo_carga
+     ORDER BY g.modo_carga
+$$;
+
+-- La IA caída no cuenta como "sin IA" ni como "con IA".
+CREATE OR REPLACE FUNCTION fn_metricas_carga(p_usuario uuid DEFAULT NULL)
+RETURNS TABLE (
+    modo                      modo_carga,
+    fichas                    integer,
+    seg_promedio              numeric,
+    seg_mediana               numeric,
+    con_categoria_final       integer,
+    mal_categorizadas         integer,
+    pct_error                 numeric,
+    pct_sugerencias_aceptadas numeric
+)
+LANGUAGE sql STABLE
+SET search_path = novastore, public
+AS $$
+    SELECT p.modo_carga,
+           count(*)::int,
+           round(avg(p.tiempo_carga_seg), 1),
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY p.tiempo_carga_seg))::numeric, 1),
+           count(*) FILTER (WHERE p.categoria_id IS NOT NULL)::int,
+           count(*) FILTER (WHERE p.categoria_manual_id <> p.categoria_id)::int,
+           round(100.0 * count(*) FILTER (WHERE p.categoria_manual_id <> p.categoria_id)
+                 / nullif(count(*) FILTER (WHERE p.categoria_id IS NOT NULL), 0), 2),
+           round(100.0 * count(*) FILTER (WHERE p.sugerencia_aceptada)
+                 / nullif(count(*) FILTER (WHERE p.sugerencia_aceptada IS NOT NULL), 0), 2)
+      FROM productos p
+     WHERE p.modo_carga IS NOT NULL
+       AND NOT p.ia_no_disponible
+       AND (p_usuario IS NULL OR p.creado_por = p_usuario)
+     GROUP BY p.modo_carga
+     ORDER BY p.modo_carga
+$$;
+
 -- Fin del esquema.
 SELECT 'Esquema novastore creado correctamente.' AS resultado;
 
@@ -1393,6 +1573,67 @@ BEGIN
     ASSERT (SELECT modo_carga FROM usuarios WHERE email = 'catalogo@novastore.pe') = 'manual';
     ASSERT (SELECT modo_carga FROM usuarios WHERE email = 'admin@novastore.pe') IS NULL;
     RAISE NOTICE 'OK 16 modo de carga por empleado';
+END $$;
+
+-- 17. Proceso sin IA vs con IA, contra la categoría de referencia
+DO $$
+DECLARE
+    v_cat   uuid := (SELECT id FROM usuarios WHERE email = 'catalogo@novastore.pe');
+    v_admin uuid := (SELECT id FROM usuarios WHERE email = 'admin@novastore.pe');
+    v_sin   bigint;
+    v_con   bigint;
+    v_auto  bigint;
+    v_m     record;
+    v_s     record;
+BEGIN
+    -- Sin IA: eligió 2 (mal; la correcta es 1). La IA, oculta, dijo 1.
+    INSERT INTO productos (nombre, marca_id, departamento_id, categoria_manual_id, precio, creado_por,
+                           modo_carga, tiempo_carga_seg, categoria_ia_id, confianza_ia)
+    VALUES ('Ficha exp sin IA', 1, 1, 2, 10, v_cat, 'manual', 200, 1, 0.9) RETURNING id INTO v_sin;
+    -- Con IA: la IA dijo 1, la persona aceptó; fue a revisión.
+    INSERT INTO productos (nombre, marca_id, departamento_id, categoria_manual_id, precio, creado_por,
+                           modo_carga, tiempo_carga_seg, sugerencia_aceptada, categoria_ia_id, confianza_ia)
+    VALUES ('Ficha exp con IA', 1, 1, 1, 10, v_cat, 'asistido', 60, true, 1, 0.6) RETURNING id INTO v_con;
+    -- Con IA: publicada sola.
+    INSERT INTO productos (nombre, marca_id, departamento_id, categoria_manual_id, categoria_id, precio, creado_por,
+                           modo_carga, tiempo_carga_seg, sugerencia_aceptada, categoria_ia_id, confianza_ia,
+                           auto_publicado, estado)
+    VALUES ('Ficha exp auto', 1, 1, 1, 1, 10, v_cat, 'asistido', 40, true, 1, 0.95, true, 'publicado')
+    RETURNING id INTO v_auto;
+    -- Con IA pero la IA caída: fuera de la medición.
+    INSERT INTO productos (nombre, marca_id, departamento_id, categoria_manual_id, precio, creado_por,
+                           modo_carga, tiempo_carga_seg, ia_no_disponible)
+    VALUES ('Ficha exp caida', 1, 1, 1, 10, v_cat, 'asistido', 500, true);
+
+    INSERT INTO experimento_fichas (codigo, grupo, nombre, categoria_referencia_id, fuente, producto_id)
+    VALUES ('T-1', 'A', 'Ficha exp sin IA', 1, 'prueba', v_sin),
+           ('T-2', 'B', 'Ficha exp con IA', 1, 'prueba', v_con),
+           ('T-3', 'B', 'Ficha exp auto',   1, 'prueba', v_auto);
+
+    -- El revisor de la ficha sin IA ve la categoría de la persona, no la de la IA.
+    SELECT * INTO v_s FROM v_sugerencia_revision WHERE producto_id = v_sin;
+    ASSERT v_s.origen = 'persona' AND v_s.categoria_sugerida_id = 2 AND v_s.confianza IS NULL, 'sugerencia sin IA';
+    SELECT * INTO v_s FROM v_sugerencia_revision WHERE producto_id = v_con;
+    ASSERT v_s.origen = 'ia' AND v_s.categoria_sugerida_id = 1, 'sugerencia con IA';
+
+    -- Primero se rechaza (30 s), luego se corrige y aprueba: cuenta el rechazo.
+    INSERT INTO rechazos_revision (producto_id, revisado_por, motivo, tiempo_revision_seg, modo_carga)
+    VALUES (v_sin, v_admin, 'Foto borrosa', 30, 'manual');
+    INSERT INTO revisiones_categoria (producto_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por,
+                                      tiempo_revision_seg, origen_sugerencia, modo_carga)
+    VALUES (v_sin, 2, 1, 'corregida', v_admin, 50, 'persona', 'manual'),
+           (v_con, 1, 1, 'aceptada', v_admin, 10, 'ia', 'asistido');
+    UPDATE productos SET estado = 'publicado' WHERE id IN (v_sin, v_con);
+
+    SELECT * INTO v_m FROM fn_metricas_proceso(true) WHERE modo = 'manual';
+    ASSERT v_m.fichas = 1 AND v_m.pct_a_revision = 100 AND v_m.seg_revision_mediana = 30
+       AND v_m.seg_proceso_mediana = 230, 'proceso sin IA';
+    ASSERT v_m.pct_error_carga = 100 AND v_m.pct_error_ia = 0 AND v_m.pct_error_publicado = 0, 'error sin IA';
+    SELECT * INTO v_m FROM fn_metricas_proceso(true) WHERE modo = 'asistido';
+    ASSERT v_m.fichas = 2 AND v_m.pct_a_revision = 50 AND v_m.revisadas = 1
+       AND v_m.seg_proceso_mediana = 55 AND v_m.pct_error_carga = 0, 'proceso con IA (sin contar la IA caída)';
+    ASSERT (SELECT count(*) FROM productos WHERE ia_no_disponible) = 1;
+    RAISE NOTICE 'OK 17 proceso sin IA vs con IA';
 END $$;
 
 ROLLBACK;

@@ -12,8 +12,12 @@ import {
 import {
   ahorroPorcentual,
   formatearDuracion,
+  obtenerAvanceExperimento,
   obtenerMetricasCarga,
   obtenerMetricasCargaPorPersona,
+  obtenerMetricasProceso,
+  type MetricaProceso,
+  type ResumenProceso,
 } from "@/lib/data/carga-repo";
 import { getServerEnv } from "@/lib/env.server";
 import { cn } from "@/lib/utils";
@@ -22,7 +26,7 @@ export default async function AdminModelosPage() {
   const session = await getSession();
   if (session?.role !== "ADMIN") redirect("/admin/dashboard");
 
-  const [salud, modelos, metricasClasificacion, lineaBase, metricasDuplicados, carga, cargaPorPersona] =
+  const [salud, modelos, metricasClasificacion, lineaBase, metricasDuplicados, carga, cargaPorPersona, avance] =
     await Promise.all([
       obtenerSaludIA(),
       listModelosIA(),
@@ -31,7 +35,12 @@ export default async function AdminModelosPage() {
       obtenerMetricasDuplicados(),
       obtenerMetricasCarga(),
       obtenerMetricasCargaPorPersona(),
+      obtenerAvanceExperimento(),
     ]);
+  // Si ya hay fichas del experimento cargadas, se mide solo sobre ellas
+  // (tienen categoría de referencia); si no, sobre todas las medidas.
+  const hayExperimento = avance.some((grupo) => grupo.cargadas > 0);
+  const proceso = await obtenerMetricasProceso(hayExperimento);
   const ahorro = ahorroPorcentual(carga);
   const modoCatalogo = getServerEnv().MODO_CATALOGO;
 
@@ -162,6 +171,34 @@ export default async function AdminModelosPage() {
         </div>
       </div>
 
+      {/* Proceso completo: carga + revisión, contra la referencia */}
+      <section aria-labelledby="titulo-proceso">
+        <h2 id="titulo-proceso" className="mb-1 text-lg font-semibold text-slate-900">
+          Proceso completo: sin IA vs con IA
+        </h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Carga + revisión de cada ficha. Las cargadas sin IA siempre pasan por revisión; con IA, solo las dudosas.
+          El error se mide contra la categoría correcta conocida de la lista del experimento, que nadie ve.
+          No cuenta las fichas con la IA caída ni las que revisó quien las cargó.
+        </p>
+        {avance.length > 0 ? (
+          <p className="mb-3 text-sm text-slate-600" data-testid="avance-experimento">
+            Experimento: {avance.map((g) => `grupo ${g.grupo} ${g.cargadas} de ${g.total}`).join(" · ")} fichas cargadas
+            {!hayExperimento && " — mientras no haya ninguna, se muestran todas las fichas medidas (sin referencia)"}.
+          </p>
+        ) : (
+          <p className="mb-3 text-sm text-slate-600" data-testid="avance-experimento">
+            Todavía no se cargó la lista del experimento (ver ml/experimento/preparar_experimento.py): sin ella no
+            hay categoría de referencia y no se puede medir el error.
+          </p>
+        )}
+        {!proceso.manual && !proceso.asistido ? (
+          <EstadoVacio mensaje="Todavía no hay fichas medidas." />
+        ) : (
+          <TablaProceso proceso={proceso} />
+        )}
+      </section>
+
       {/* Tiempo de carga del personal: manual vs con la IA */}
       <div>
         <h2 className="mb-1 text-lg font-semibold text-slate-900">
@@ -251,6 +288,8 @@ export default async function AdminModelosPage() {
         </h2>
         <p className="mb-3 text-sm text-slate-500">
           No cuenta las fichas cargadas con la sugerencia a la vista: la línea base solo vale si se eligió a ciegas.
+          Compara contra la categoría final que quedó publicada; la medición contra una referencia independiente
+          está en &ldquo;Proceso completo&rdquo;.
         </p>
         {lineaBase.conCategoriaManual === 0 ? (
           <EstadoVacio mensaje="Todavía no hay productos con categoría elegida a mano para medir esto." />
@@ -322,6 +361,47 @@ export default async function AdminModelosPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const pct = (valor: number | null | undefined) => (valor === null || valor === undefined ? "—" : `${valor}%`);
+
+const FILAS_PROCESO: { etiqueta: string; valor: (m: MetricaProceso | undefined) => string }[] = [
+  { etiqueta: "Fichas medidas", valor: (m) => String(m?.fichas ?? 0) },
+  { etiqueta: "Tiempo de carga (mediana)", valor: (m) => formatearDuracion(m?.segCargaMediana) },
+  { etiqueta: "Fichas que pasaron por revisión", valor: (m) => pct(m?.pctARevision) },
+  { etiqueta: "Tiempo de revisión por ficha revisada (mediana)", valor: (m) => formatearDuracion(m?.segRevisionMediana) },
+  { etiqueta: "Tiempo total del proceso por ficha (mediana)", valor: (m) => formatearDuracion(m?.segProcesoMediana) },
+  { etiqueta: "Revisiones que corrigieron la categoría", valor: (m) => pct(m?.pctCorrecciones) },
+  { etiqueta: "Fichas con categoría de referencia", valor: (m) => String(m?.conReferencia ?? 0) },
+  { etiqueta: "Error al cargar (lo que eligió la persona)", valor: (m) => pct(m?.pctErrorCarga) },
+  { etiqueta: "Error de la IA sola en esas fichas", valor: (m) => pct(m?.pctErrorIA) },
+  { etiqueta: "Error publicado (después de la revisión)", valor: (m) => pct(m?.pctErrorPublicado) },
+];
+
+function TablaProceso({ proceso }: { proceso: ResumenProceso }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <table className="w-full min-w-[560px] text-left text-sm">
+        <caption className="sr-only">Proceso completo de catalogación, sin IA y con IA</caption>
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <th scope="col" className="px-4 py-3 font-medium">Métrica</th>
+            <th scope="col" className="px-4 py-3 font-medium">Sin IA</th>
+            <th scope="col" className="px-4 py-3 font-medium">Con IA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {FILAS_PROCESO.map((fila) => (
+            <tr key={fila.etiqueta} className="border-b border-slate-100 text-slate-700 last:border-0">
+              <th scope="row" className="px-4 py-2.5 font-normal text-slate-600">{fila.etiqueta}</th>
+              <td className="px-4 py-2.5 font-semibold text-slate-900">{fila.valor(proceso.manual)}</td>
+              <td className="px-4 py-2.5 font-semibold text-slate-900">{fila.valor(proceso.asistido)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

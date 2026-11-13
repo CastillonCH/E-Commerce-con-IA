@@ -50,6 +50,8 @@ const createProductSchema = z
       .optional()
       .transform((seg) => (seg !== undefined && seg >= 1 && seg <= 7200 ? Math.round(seg) : undefined)),
     sugerenciaMostrada: z.boolean().optional(),
+    // Modo con el que se abrió el formulario (migración 006).
+    modoCarga: z.enum(["manual", "asistido"]).optional(),
   })
   .refine(
     (data) => (CATEGORIAS_IA[data.departamento] as readonly string[]).includes(data.categoriaManual),
@@ -196,17 +198,22 @@ export async function createProductAction(
     void error;
   }
 
-  // "asistido" solo si de verdad vio la sugerencia (que solo se muestra a
-  // quien está en modo con IA): si la IA no respondió, o está en modo sin
-  // IA, eligió a ciegas y cuenta como carga manual. Se decide por lo que vio,
-  // no por el modo actual, por si el admin se lo cambió con el formulario abierto.
-  const modoCarga: ModoCarga = parsed.data.sugerenciaMostrada ? "asistido" : "manual";
+  // El modo es el del formulario que llenó (no el actual, por si el admin
+  // se lo cambió con el formulario abierto). En modo con IA sin haber
+  // visto la sugerencia (la IA no respondió), la ficha no es ni "con IA" ni
+  // "sin IA": queda fuera de la medición. Nunca "con IA" sin haberla visto.
+  const modoFormulario: ModoCarga =
+    parsed.data.modoCarga ?? (parsed.data.sugerenciaMostrada ? "asistido" : "manual");
+  const modoCarga: ModoCarga =
+    modoFormulario === "asistido" || parsed.data.sugerenciaMostrada ? "asistido" : "manual";
+  const iaNoDisponible = modoCarga === "asistido" && !parsed.data.sugerenciaMostrada;
   const creadoPor = (await findUserByEmail(session.email))?.id;
 
   try {
     const { pendingReview, productId } = await createProductFromAI({
       creadoPor,
       modoCarga,
+      iaNoDisponible,
       tiempoCargaSeg: parsed.data.tiempoCargaSeg,
       proveedorId: parsed.data.proveedorId,
       nombre: parsed.data.nombre,
@@ -230,6 +237,9 @@ export async function createProductAction(
       }
     }
 
+    // Sin IA: no se le muestra lo que dijo la IA ni después de guardar
+    // (aprendería de ella y la siguiente ficha ya no sería "sin IA").
+    if (modoCarga === "manual") return { success: true, pendingReview };
     return {
       success: true,
       pendingReview,
@@ -334,6 +344,8 @@ export async function updateProductAction(
       }
     }
 
+    // Quien carga sin IA tampoco ve la predicción al editar.
+    if ((await modoCargaDe(session.email)) === "manual") return { success: true, pendingReview };
     return {
       success: true,
       pendingReview,

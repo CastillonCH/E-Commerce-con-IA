@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { closePool, queryOne } from "@/lib/db";
+import { closePool, query, queryOne } from "@/lib/db";
 import { crearMiembroPersonal } from "@/lib/data/users-repo";
-import { obtenerMetricasCarga, ahorroPorcentual } from "@/lib/data/carga-repo";
+import { obtenerMetricasCarga, ahorroPorcentual, obtenerMetricasProceso } from "@/lib/data/carga-repo";
 import type { ClasificarResponse } from "@/lib/ai-client";
 import {
   listProducts,
@@ -386,8 +386,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const pending = await listPendingReview();
         const entry = pending.find((p) => p.product.nombre === "Producto Sin IA Disponible");
         expect(entry).toBeDefined();
-        expect(entry!.confidence).toBe(0); // sin predicción -> sin confianza
-        expect(entry!.product.categoria_ia).toBe("Sin categoría sugerida");
+        // Sin predicción: el revisor ve la categoría que eligió la persona.
+        expect(entry).toMatchObject({ origen: "persona", confidence: null });
+        expect(entry!.product.categoria_ia).toBe("Audio y audífonos");
       });
     });
 
@@ -566,7 +567,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         expect(entry?.confidence).toBe(0.8);
       });
 
-      it("en modo demo, NO guarda predicciones_ia (el modelo 'demo' no existe en modelos_ia)", async () => {
+      it("en modo demo, NO guarda predicciones_ia, pero el revisor ve la sugerencia fusionada", async () => {
         process.env.REVIEW_POLICY = "todos";
 
         const result = await createProductFromAI({
@@ -583,10 +584,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
         const pending = await listPendingReview();
         const entry = pending.find((p) => p.product.id === result.productId);
-        // Sin predicciones_ia, listPendingReview no tiene de dónde sacar
-        // una categoría/confianza sugerida.
-        expect(entry?.confidence).toBe(0);
-        expect(entry?.product.categoria_ia).toBe("Sin categoría sugerida");
+        // La sugerencia (resultado fusionado) se guarda en el producto
+        // (migración 006): es la misma que vio quien lo cargó.
+        expect(entry?.origen).toBe("ia");
+        expect(entry?.confidence).toBe(0.4);
+        expect(entry?.product.categoria_ia).toBe("Audio y audífonos");
       });
     });
 
@@ -827,6 +829,142 @@ describe.skipIf(!process.env.DATABASE_URL)(
         expect(mias.manual).toMatchObject({ fichas: 2, segMediana: 180 });
         expect(mias.asistido).toMatchObject({ fichas: 1, segMediana: 60, pctSugerenciasAceptadas: 100 });
         expect(ahorroPorcentual(mias)).toBe(67);
+      });
+    });
+
+    describe("proceso sin IA vs con IA (migración 006)", () => {
+      const ficha = {
+        descripcion: "Ficha para medir el proceso completo sin IA y con IA.",
+        marca: "HomeChef",
+        departamento: "Hogar" as const,
+        precio: 99.9,
+        stock: 2,
+        imagenUrl: "https://example.com/proceso.jpg",
+      };
+
+      it("sin IA: nunca se publica sola, guarda la IA oculta y el revisor ve la categoría de la persona", async () => {
+        process.env.REVIEW_POLICY = "umbral";
+        process.env.REVIEW_THRESHOLD = "0.75";
+        const result = await createProductFromAI({
+          ...ficha,
+          nombre: "Licuadora Sin IA Segura",
+          categoriaManualNombre: "Muebles",
+          clasificacion: clasificacionFalsa({ categoria: "Electrodomésticos de cocina", confianza: 0.99 }),
+          modoCarga: "manual",
+          tiempoCargaSeg: 90,
+        });
+        expect(result.pendingReview).toBe(true);
+
+        const guardada = await queryOne<{ categoria_ia: string; auto_publicado: boolean }>(
+          `SELECT c.nombre AS categoria_ia, p.auto_publicado FROM productos p
+             JOIN categorias c ON c.id = p.categoria_ia_id WHERE p.id = $1`,
+          [result.productId],
+        );
+        expect(guardada).toEqual({ categoria_ia: "Electrodomésticos de cocina", auto_publicado: false });
+
+        const entry = (await listPendingReview()).find((e) => e.product.id === result.productId);
+        expect(entry).toMatchObject({ origen: "persona", confidence: null, modoCarga: "manual" });
+        expect(entry?.product.categoria_ia).toBe("Muebles");
+
+        // El revisor la corrige: queda registrado que corrigió a la PERSONA.
+        await approvePendingReview(result.productId, "admin@novastore.pe", "Electrodomésticos de cocina", 25);
+        const revision = await queryOne<{ origen_sugerencia: string; accion: string; modo_carga: string; prediccion_id: number | null }>(
+          `SELECT origen_sugerencia, accion, modo_carga, prediccion_id FROM revisiones_categoria WHERE producto_id = $1`,
+          [result.productId],
+        );
+        expect(revision).toEqual({ origen_sugerencia: "persona", accion: "corregida", modo_carga: "manual", prediccion_id: null });
+      });
+
+      it("con IA pero la IA caída: queda fuera de la medición y nunca se publica sola", async () => {
+        process.env.REVIEW_POLICY = "umbral";
+        const email = `caida-${Date.now()}@novastore.pe`;
+        const { id } = await crearMiembroPersonal({ nombre: "Carga Con IA Caída", email, rol: "CATALOGO" });
+        const result = await createProductFromAI({
+          ...ficha,
+          nombre: "Ficha Con IA Caída",
+          categoriaManualNombre: "Muebles",
+          clasificacion: null,
+          creadoPor: id,
+          modoCarga: "asistido",
+          iaNoDisponible: true,
+          tiempoCargaSeg: 300,
+        });
+        expect(result.pendingReview).toBe(true);
+        expect(await obtenerMetricasCarga(email)).toEqual({});
+        const entry = (await listPendingReview()).find((e) => e.product.id === result.productId);
+        expect(entry).toMatchObject({ origen: "persona", iaNoDisponible: true });
+      });
+
+      it("un rechazo guarda quién y cuánto tardó; cuenta la primera decisión y el error va contra la referencia", async () => {
+        process.env.REVIEW_POLICY = "todos";
+        const nombre = `Ficha Del Experimento ${Date.now()}`;
+        await query(
+          `INSERT INTO experimento_fichas (codigo, grupo, nombre, categoria_referencia_id, fuente)
+           SELECT $1, 'A', $2, id, 'prueba' FROM categorias WHERE nombre = 'Electrodomésticos de cocina'`,
+          [`T${Date.now() % 1e9}`, nombre],
+        );
+        const result = await createProductFromAI({
+          ...ficha,
+          // Mismo nombre con otras mayúsculas y espacios: igual se enlaza.
+          nombre: `  ${nombre.toUpperCase()} `,
+          categoriaManualNombre: "Muebles",
+          clasificacion: clasificacionFalsa({ categoria: "Electrodomésticos de cocina", confianza: 0.6 }),
+          modoCarga: "manual",
+          tiempoCargaSeg: 100,
+        });
+        const enlace = await queryOne<{ producto_id: string }>(
+          `SELECT producto_id::text FROM experimento_fichas WHERE nombre = $1`,
+          [nombre],
+        );
+        expect(enlace?.producto_id).toBe(result.productId);
+
+        expect(
+          await rejectPendingReview(result.productId, "Foto de baja calidad", {
+            adminEmail: "admin@novastore.pe",
+            tiempoRevisionSeg: 40,
+          }),
+        ).toBe(true);
+        const rechazo = await queryOne<{ tiempo_revision_seg: number; modo_carga: string }>(
+          `SELECT tiempo_revision_seg, modo_carga FROM rechazos_revision WHERE producto_id = $1`,
+          [result.productId],
+        );
+        expect(rechazo).toEqual({ tiempo_revision_seg: 40, modo_carga: "manual" });
+
+        // Se reenvía y se aprueba corrigiendo: para la medición cuenta el rechazo.
+        await query(`UPDATE productos SET estado = 'pendiente_revision' WHERE id = $1`, [result.productId]);
+        await approvePendingReview(result.productId, "admin@novastore.pe", "Electrodomésticos de cocina", 15);
+
+        const sinIA = (await obtenerMetricasProceso(true)).manual;
+        expect(sinIA).toMatchObject({
+          fichas: 1,
+          pctARevision: 100,
+          segRevisionMediana: 40,
+          segProcesoMediana: 140,
+          conReferencia: 1,
+          pctErrorCarga: 100,
+          pctErrorIA: 0,
+          pctErrorPublicado: 0,
+        });
+      });
+
+      it("al reemplazar la foto, una ficha sin IA tampoco se publica sola", async () => {
+        process.env.REVIEW_POLICY = "umbral";
+        process.env.REVIEW_THRESHOLD = "0.75";
+        const creado = await createProductFromAI({
+          ...ficha,
+          nombre: "Ficha Sin IA Editada",
+          categoriaManualNombre: "Electrodomésticos de cocina",
+          clasificacion: clasificacionFalsa({ categoria: "Electrodomésticos de cocina", confianza: 0.95 }),
+          modoCarga: "manual",
+        });
+        const resultado = await reclassifyProduct({
+          productId: creado.productId,
+          nombre: "Ficha Sin IA Editada",
+          descripcion: "Descripción actualizada de más de veinte caracteres.",
+          imagenUrl: "https://example.com/proceso-2.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Electrodomésticos de cocina", confianza: 0.97 }),
+        });
+        expect(resultado.pendingReview).toBe(true);
       });
     });
 

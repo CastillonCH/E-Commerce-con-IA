@@ -86,6 +86,78 @@ export function ahorroPorcentual(resumen: ResumenCarga): number | null {
   return Math.round((1 - asistido / manual) * 100);
 }
 
+// --- Proceso completo (carga + revisión) por modo — migración 006 ---------
+export interface MetricaProceso {
+  modo: ModoCarga;
+  fichas: number;
+  segCargaMediana: number | null;
+  pctARevision: number | null;
+  revisadas: number;
+  segRevisionMediana: number | null;
+  segProcesoMediana: number | null;
+  pctCorrecciones: number | null;
+  conReferencia: number;
+  pctErrorCarga: number | null;
+  pctErrorIA: number | null;
+  pctErrorPublicado: number | null;
+}
+
+interface ProcesoRow {
+  modo: ModoCarga;
+  fichas: number;
+  seg_carga_mediana: string | null;
+  pct_a_revision: string | null;
+  revisadas: number;
+  seg_revision_mediana: string | null;
+  seg_proceso_mediana: string | null;
+  pct_correcciones: string | null;
+  con_referencia: number;
+  pct_error_carga: string | null;
+  pct_error_ia: string | null;
+  pct_error_publicado: string | null;
+}
+
+export type ResumenProceso = Partial<Record<ModoCarga, MetricaProceso>>;
+
+/** soloExperimento: solo las fichas de la lista del experimento (con referencia). */
+export async function obtenerMetricasProceso(soloExperimento: boolean): Promise<ResumenProceso> {
+  const rows = await query<ProcesoRow>(`SELECT * FROM fn_metricas_proceso($1)`, [soloExperimento]);
+  return Object.fromEntries(
+    rows.map((row) => [
+      row.modo,
+      {
+        modo: row.modo,
+        fichas: Number(row.fichas),
+        segCargaMediana: numero(row.seg_carga_mediana),
+        pctARevision: numero(row.pct_a_revision),
+        revisadas: Number(row.revisadas),
+        segRevisionMediana: numero(row.seg_revision_mediana),
+        segProcesoMediana: numero(row.seg_proceso_mediana),
+        pctCorrecciones: numero(row.pct_correcciones),
+        conReferencia: Number(row.con_referencia),
+        pctErrorCarga: numero(row.pct_error_carga),
+        pctErrorIA: numero(row.pct_error_ia),
+        pctErrorPublicado: numero(row.pct_error_publicado),
+      },
+    ]),
+  );
+}
+
+export interface AvanceExperimento {
+  grupo: "A" | "B";
+  total: number;
+  cargadas: number;
+}
+
+/** Cuántas fichas de cada grupo del experimento ya se cargaron. */
+export async function obtenerAvanceExperimento(): Promise<AvanceExperimento[]> {
+  const rows = await query<{ grupo: "A" | "B"; total: number; cargadas: number }>(
+    `SELECT grupo, count(*)::int AS total, count(producto_id)::int AS cargadas
+       FROM experimento_fichas GROUP BY grupo ORDER BY grupo`,
+  );
+  return rows.map((row) => ({ grupo: row.grupo, total: Number(row.total), cargadas: Number(row.cargadas) }));
+}
+
 export function formatearDuracion(segundos: number | null | undefined): string {
   if (segundos === null || segundos === undefined) return "—";
   if (segundos < 60) return `${Math.round(segundos)} s`;

@@ -53,6 +53,7 @@ const rejectSchema = z.object({
     .trim()
     .min(5, "Indica el motivo del rechazo (mínimo 5 caracteres).")
     .max(300, "El motivo no puede superar los 300 caracteres."),
+  tiempoRevisionSeg: z.number().int().nonnegative().optional(),
 });
 
 // El motivo es obligatorio: es lo que ve el personal de catálogo para
@@ -60,15 +61,21 @@ const rejectSchema = z.object({
 export async function rejectReviewAction(
   productId: string,
   motivo: string,
+  tiempoRevisionSeg?: number,
 ): Promise<ReviewActionResult> {
-  if (!(await requireAdmin())) return { success: false, error: "No autorizado." };
+  const admin = await requireAdmin();
+  if (!admin) return { success: false, error: "No autorizado." };
 
-  const parsed = rejectSchema.safeParse({ productId, motivo });
+  const parsed = rejectSchema.safeParse({ productId, motivo, tiempoRevisionSeg });
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
-  const ok = await rejectPendingReview(parsed.data.productId, parsed.data.motivo);
+  // También queda registrado quién rechazó y cuánto tardó (migración 006).
+  const ok = await rejectPendingReview(parsed.data.productId, parsed.data.motivo, {
+    adminEmail: admin.email,
+    tiempoRevisionSeg: parsed.data.tiempoRevisionSeg,
+  });
   if (!ok) return { success: false, error: "El producto ya no está en revisión." };
 
   return { success: true };

@@ -1,4 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// La revisión muestra de a una ficha; las demás están en "Siguientes en la cola".
+async function abrirEnRevision(page: Page, nombre: string) {
+  const ficha = page.getByRole("article", { name: `Revisión de ${nombre}` });
+  if (!(await ficha.isVisible())) await page.getByRole("button", { name: nombre, exact: true }).click();
+  await expect(ficha).toBeVisible();
+  return ficha;
+}
 
 test.describe("e. Panel de administración: IA y pedidos", () => {
   test.beforeEach(async ({ page }) => {
@@ -121,11 +129,11 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await page.getByRole("button", { name: "Ingresar" }).click();
     await page.waitForURL(/admin\/dashboard/);
 
+    // Se revisa de a una ficha: si no es la primera de la cola, se elige.
     await page.goto("/admin/revision");
-    const fila = page.getByRole("listitem").filter({ hasText: "Parlante E2E con IA" });
-    await expect(fila).toHaveCount(1);
-    await expect(fila).toBeVisible();
-    await fila.getByRole("button", { name: "Aprobar" }).click();
+    const ficha = await abrirEnRevision(page, "Parlante E2E con IA");
+    await expect(ficha.getByText(/La IA sugiere .Audio y audífonos./)).toBeVisible();
+    await ficha.getByRole("button", { name: "Aprobar" }).click();
     await expect(page.getByText("Parlante E2E con IA", { exact: true })).toBeHidden();
 
     await page.goto("/?q=Parlante+E2E+con+IA");
@@ -174,9 +182,11 @@ test.describe("e2. Alta de producto con el módulo de IA (mock en modo demo)", (
     await page.getByRole("button", { name: "Ingresar" }).click();
     await page.waitForURL(/admin\/dashboard/);
 
+    // Sin sugerencia de la IA: el revisor ve lo que eligió la persona, y la
+    // ficha queda marcada (fuera de la medición sin IA vs con IA).
     await page.goto("/admin/revision");
-    const filaSinIA = page.getByRole("listitem").filter({ hasText: "Producto Sin IA Disponible E2E" });
-    await expect(filaSinIA).toHaveCount(1);
-    await expect(filaSinIA.getByText(/Sin categoría sugerida/)).toBeVisible();
+    const fichaSinIA = await abrirEnRevision(page, "Producto Sin IA Disponible E2E");
+    await expect(fichaSinIA.getByTestId("modo-ficha")).toHaveText("Sin sugerencia de la IA al cargarla");
+    await expect(fichaSinIA.getByText(/Quien la cargó eligió .Audio y audífonos./)).toBeVisible();
   });
 });

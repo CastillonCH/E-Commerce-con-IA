@@ -417,11 +417,24 @@ export interface ReclassifyResult {
 }
 
 export async function reclassifyProduct(input: ReclassifyInput): Promise<ReclassifyResult> {
-  const producto = await queryOne<{ departamento_id: number }>(
-    `SELECT departamento_id FROM productos WHERE id = $1`,
+  const producto = await queryOne<{ departamento_id: number; modo_carga: "manual" | "asistido" | null }>(
+    `SELECT departamento_id, modo_carga FROM productos WHERE id = $1`,
     [input.productId],
   );
   if (!producto) throw new Error("Producto no encontrado.");
+
+  // La nueva sugerencia de la IA reemplaza a la anterior (la que ve el
+  // revisor en las fichas con IA).
+  const categoriaIA = input.clasificacion
+    ? await queryOne<{ id: number }>(`SELECT id FROM categorias WHERE nombre = $1`, [
+        input.clasificacion.resultado.categoria,
+      ])
+    : null;
+  await query(`UPDATE productos SET categoria_ia_id = $2, confianza_ia = $3 WHERE id = $1`, [
+    input.productId,
+    categoriaIA?.id ?? null,
+    categoriaIA ? input.clasificacion!.resultado.confianza : null,
+  ]);
 
   await query(
     `UPDATE producto_imagenes SET es_principal = false WHERE producto_id = $1 AND es_principal`,
@@ -445,7 +458,9 @@ export async function reclassifyProduct(input: ReclassifyInput): Promise<Reclass
     producto.departamento_id,
   );
   const { REVIEW_POLICY, REVIEW_THRESHOLD } = getServerEnv();
+  // Una ficha cargada sin IA sigue siendo del proceso sin IA: no se publica sola.
   const puedePublicarDirecto =
+    producto.modo_carga !== "manual" &&
     REVIEW_POLICY === "umbral" &&
     input.clasificacion.resultado.confianza >= REVIEW_THRESHOLD &&
     categoriaSugerida !== null;
@@ -588,6 +603,9 @@ export interface CreateProductFromAIInput {
   creadoPor?: string;
   modoCarga?: "manual" | "asistido";
   tiempoCargaSeg?: number;
+  // Estaba en modo "con IA" pero la IA no respondió: queda fuera de la
+  // medición (migración 006).
+  iaNoDisponible?: boolean;
 }
 
 export interface CreateProductFromAIResult {
@@ -621,10 +639,20 @@ export async function createProductFromAI(
       ? input.clasificacion.resultado.categoria === input.categoriaManualNombre
       : null;
 
+  // La sugerencia de la IA (fusión imagen + texto) se guarda siempre. En
+  // una ficha sin IA nadie la ve: sirve para comparar a la persona con la
+  // IA en las mismas fichas.
+  const categoriaIA = input.clasificacion
+    ? await queryOne<{ id: number }>(`SELECT id FROM categorias WHERE nombre = $1`, [
+        input.clasificacion.resultado.categoria,
+      ])
+    : null;
+
   const producto = await queryOne<{ id: string }>(
     `INSERT INTO productos (proveedor_id, nombre, descripcion, marca_id, departamento_id, categoria_manual_id, precio, stock,
-                            creado_por, modo_carga, tiempo_carga_seg, sugerencia_aceptada)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                            creado_por, modo_carga, tiempo_carga_seg, sugerencia_aceptada,
+                            categoria_ia_id, confianza_ia, ia_no_disponible)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING id::text AS id`,
     [
       input.proveedorId ?? null,
@@ -639,9 +667,20 @@ export async function createProductFromAI(
       input.modoCarga ?? null,
       input.tiempoCargaSeg ?? null,
       sugerenciaAceptada,
+      categoriaIA?.id ?? null,
+      categoriaIA ? input.clasificacion!.resultado.confianza : null,
+      input.iaNoDisponible ?? false,
     ],
   );
   const productoId = producto!.id;
+
+  // Si es una ficha de la lista del experimento (mismo nombre), queda
+  // enlazada a su categoría de referencia. Nadie la ve.
+  await query(
+    `UPDATE experimento_fichas SET producto_id = $1
+      WHERE lower(btrim(nombre)) = lower(btrim($2)) AND producto_id IS NULL`,
+    [productoId, input.nombre],
+  );
 
   const imagen = await queryOne<{ id: string }>(
     `INSERT INTO producto_imagenes (producto_id, url, es_principal) VALUES ($1, $2, true) RETURNING id::text AS id`,
@@ -663,8 +702,11 @@ export async function createProductFromAI(
   const { REVIEW_POLICY, REVIEW_THRESHOLD } = getServerEnv();
   const confianzaAlcanzaUmbral = input.clasificacion.resultado.confianza >= REVIEW_THRESHOLD;
   // Si la persona corrigió a la IA (modo asistido), hay desacuerdo: que lo
-  // decida un administrador en /admin/revision.
+  // decida un administrador en /admin/revision. Una ficha sin IA (o con la
+  // IA caída) nunca se publica sola: en un proceso sin IA se revisa todo.
   const puedePublicarDirecto =
+    input.modoCarga !== "manual" &&
+    !input.iaNoDisponible &&
     REVIEW_POLICY === "umbral" &&
     confianzaAlcanzaUmbral &&
     categoriaSugerida !== null &&
@@ -675,10 +717,10 @@ export async function createProductFromAI(
   }
 
   if (puedePublicarDirecto) {
-    await query(`UPDATE productos SET categoria_id = $2, estado = 'publicado' WHERE id = $1`, [
-      productoId,
-      categoriaSugerida!.id,
-    ]);
+    await query(
+      `UPDATE productos SET categoria_id = $2, estado = 'publicado', auto_publicado = true WHERE id = $1`,
+      [productoId, categoriaSugerida!.id],
+    );
   }
 
   return {
@@ -876,25 +918,39 @@ export async function buscarDuplicadosPorEmbeddings(
     .slice(0, 3);
 }
 
-// --- Revisión de clasificaciones de IA con baja confianza -----------------
+// --- Revisión de fichas (migración 006: según el modo de carga) ------------
+//
+// Qué ve el revisor como propuesta lo decide v_sugerencia_revision:
+//   · ficha sin IA → la categoría que eligió quien la cargó ("persona"),
+//     sin ninguna pista de la IA (su predicción se guarda, pero oculta);
+//   · ficha con IA → la sugerencia fusionada de la IA ("ia"), la misma que
+//     vio quien la cargó.
+export type OrigenSugerencia = "ia" | "persona";
+
 export interface PendingReviewEntry {
+  // product.categoria_ia es la categoría PROPUESTA al revisor (de la IA o
+  // de la persona, según `origen`).
   product: Product;
-  confidence: number;
+  origen: OrigenSugerencia | null;
+  // Confianza de la IA; null cuando la propuesta es de la persona.
+  confidence: number | null;
   creadoEn: string;
   // Categoría que dejó quien cargó la ficha, y si la eligió viendo la
   // sugerencia de la IA ("asistido") o a ciegas ("manual").
   categoriaPersonal: string | null;
   modoCarga: "manual" | "asistido" | null;
+  iaNoDisponible: boolean;
+  cargadoPorEmail: string | null;
 }
 
 interface PendingRow extends ProductRow {
   creado_en: Date;
-  departamento_id: number;
-  prediccion_id: number | null;
-  categoria_sugerida_id: number | null;
+  origen: OrigenSugerencia | null;
   confianza: number | null;
   categoria_personal: string | null;
   modo_carga: "manual" | "asistido" | null;
+  ia_no_disponible: boolean;
+  cargado_por_email: string | null;
 }
 
 const SELECT_PENDIENTES = `
@@ -906,51 +962,54 @@ const SELECT_PENDIENTES = `
     m.nombre::text                                        AS marca,
     d.nombre                                               AS departamento,
     img.url                                                AS imagen_url,
-    COALESCE(cat_pred.nombre, 'Sin categoría sugerida')    AS categoria_ia,
+    COALESCE(cat_sug.nombre, 'Sin categoría sugerida')     AS categoria_ia,
     p.precio_original::float8                              AS "precioOriginal",
     p.rating_promedio::float8                              AS rating,
     p.num_resenas                                          AS "numResenas",
     p.envio_gratis                                         AS "envioGratis",
     p.es_nuevo                                             AS "esNuevo",
     p.descripcion,
-    p.departamento_id,
-    pred.id                                                AS prediccion_id,
-    pred.categoria_predicha_id                             AS categoria_sugerida_id,
-    pred.confianza::float8                                 AS confianza,
+    s.origen,
+    s.confianza::float8                                    AS confianza,
     cat_man.nombre                                         AS categoria_personal,
     p.modo_carga,
+    p.ia_no_disponible,
+    autor.email::text                                      AS cargado_por_email,
     p.creado_en
   FROM productos p
   JOIN marcas m ON m.id = p.marca_id
   JOIN departamentos d ON d.id = p.departamento_id
+  JOIN v_sugerencia_revision s ON s.producto_id = p.id
   LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
-  -- Puede haber una fila de predicciones_ia por modelo (imagen + texto) —
-  -- se muestra la de mayor confianza como "la" sugerencia principal (no
-  -- hay una fila de "resultado fusionado" en predicciones_ia; el fusionado
-  -- vive solo en la respuesta de ai-service, no se vuelve a calcular acá).
-  LEFT JOIN LATERAL (
-    SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST LIMIT 1
-  ) pred ON true
-  LEFT JOIN categorias cat_pred ON cat_pred.id = pred.categoria_predicha_id
+  LEFT JOIN categorias cat_sug ON cat_sug.id = s.categoria_sugerida_id
   LEFT JOIN categorias cat_man ON cat_man.id = p.categoria_manual_id
+  LEFT JOIN usuarios autor ON autor.id = p.creado_por
   WHERE p.estado = 'pendiente_revision'
 `;
 
 function toPendingEntry(row: PendingRow): PendingReviewEntry {
   return {
     product: toProduct(row),
-    confidence: row.confianza ?? 0,
+    origen: row.origen,
+    confidence: row.confianza,
     creadoEn: row.creado_en.toISOString(),
     categoriaPersonal: row.categoria_personal,
     modoCarga: row.modo_carga,
+    iaNoDisponible: row.ia_no_disponible,
+    cargadoPorEmail: row.cargado_por_email,
   };
 }
 
+/** En orden de llegada: la primera es la que se revisa ahora. */
 export async function listPendingReview(): Promise<PendingReviewEntry[]> {
-  const rows = await query<PendingRow>(
-    `${SELECT_PENDIENTES} ORDER BY p.creado_en`,
-  );
+  const rows = await query<PendingRow>(`${SELECT_PENDIENTES} ORDER BY p.creado_en, p.id`);
   return rows.map(toPendingEntry);
+}
+
+async function idDelRevisor(email: string): Promise<string> {
+  const usuario = await queryOne<{ id: string }>(`SELECT id::text AS id FROM usuarios WHERE email = $1`, [email]);
+  if (!usuario) throw new Error("No se encontró al administrador que revisa.");
+  return usuario.id;
 }
 
 export async function approvePendingReview(
@@ -960,15 +1019,15 @@ export async function approvePendingReview(
   tiempoRevisionSeg?: number,
 ): Promise<Product | null> {
   const pending = await queryOne<{
+    origen: OrigenSugerencia | null;
     prediccion_id: number | null;
     categoria_sugerida_id: number | null;
     departamento_id: number;
+    modo_carga: "manual" | "asistido" | null;
   }>(
-    `SELECT pred.id AS prediccion_id, pred.categoria_predicha_id AS categoria_sugerida_id, p.departamento_id
+    `SELECT s.origen, s.prediccion_id, s.categoria_sugerida_id, p.departamento_id, p.modo_carga
        FROM productos p
-       LEFT JOIN LATERAL (
-         SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST LIMIT 1
-       ) pred ON true
+       JOIN v_sugerencia_revision s ON s.producto_id = p.id
       WHERE p.id = $1 AND p.estado = 'pendiente_revision'`,
     [productId],
   );
@@ -991,24 +1050,23 @@ export async function approvePendingReview(
     throw new Error("Este producto no tiene una categoría sugerida ni una categoría final.");
   }
 
-  const admin = await queryOne<{ id: string }>(
-    `SELECT id::text AS id FROM usuarios WHERE email = $1`,
-    [adminEmail],
-  );
-  if (!admin) throw new Error("No se encontró al administrador que aprueba.");
+  const adminId = await idDelRevisor(adminEmail);
 
   await query(
     `INSERT INTO revisiones_categoria
-       (producto_id, prediccion_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por, tiempo_revision_seg)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       (producto_id, prediccion_id, categoria_sugerida_id, categoria_final_id, accion, revisado_por,
+        tiempo_revision_seg, origen_sugerencia, modo_carga)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       productId,
       pending.prediccion_id,
       pending.categoria_sugerida_id,
       categoriaFinalId,
       accion,
-      admin.id,
+      adminId,
       tiempoRevisionSeg ?? null,
+      pending.origen ?? "ia",
+      pending.modo_carga,
     ],
   );
   // El trigger trg_revision_aplicar_categoria ya fija productos.categoria_id;
@@ -1019,15 +1077,39 @@ export async function approvePendingReview(
   return getProductById(productId);
 }
 
+export interface RechazoRevision {
+  adminEmail: string;
+  tiempoRevisionSeg?: number;
+}
+
+/** Con `rechazo`, también queda registrado quién rechazó y cuánto tardó. */
 export async function rejectPendingReview(
   productId: string,
   motivo: string,
+  rechazo?: RechazoRevision,
 ): Promise<boolean> {
-  const result = await queryOne<{ id: string }>(
-    `UPDATE productos SET estado = 'rechazado', motivo_rechazo = $2
-      WHERE id = $1 AND estado = 'pendiente_revision'
-      RETURNING id::text AS id`,
-    [productId, motivo],
+  if (!rechazo) {
+    const result = await queryOne<{ id: string }>(
+      `UPDATE productos SET estado = 'rechazado', motivo_rechazo = $2
+        WHERE id = $1 AND estado = 'pendiente_revision'
+        RETURNING id::text AS id`,
+      [productId, motivo],
+    );
+    return result !== null;
+  }
+
+  // Una sola sentencia: o se rechaza y queda registrado, o nada.
+  const adminId = await idDelRevisor(rechazo.adminEmail);
+  const result = await queryOne<{ producto_id: string }>(
+    `WITH rechazado AS (
+       UPDATE productos SET estado = 'rechazado', motivo_rechazo = $2
+        WHERE id = $1 AND estado = 'pendiente_revision'
+        RETURNING id, modo_carga
+     )
+     INSERT INTO rechazos_revision (producto_id, revisado_por, motivo, tiempo_revision_seg, modo_carga)
+     SELECT id, $3, $2, $4, modo_carga FROM rechazado
+     RETURNING producto_id::text`,
+    [productId, motivo, adminId, rechazo.tiempoRevisionSeg ?? null],
   );
   return result !== null;
 }

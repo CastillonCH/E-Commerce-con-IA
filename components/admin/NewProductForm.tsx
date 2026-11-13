@@ -70,8 +70,14 @@ interface Props {
 
 /** Cada "Cargar otro producto" monta un formulario nuevo: limpio y con el cronómetro en cero. */
 export function NewProductForm(props: Props) {
+  const router = useRouter();
   const [intento, setIntento] = useState(0);
-  return <FormularioCarga key={intento} {...props} onCargarOtro={() => setIntento((n) => n + 1)} />;
+  // refresh: "Tus fichas medidas" ya incluye la que se acaba de guardar.
+  function cargarOtro() {
+    setIntento((n) => n + 1);
+    router.refresh();
+  }
+  return <FormularioCarga key={intento} {...props} onCargarOtro={cargarOtro} />;
 }
 
 function FormularioCarga({ proveedores, modo, resumen, onCargarOtro }: Props & { onCargarOtro: () => void }) {
@@ -149,6 +155,9 @@ function FormularioCarga({ proveedores, modo, resumen, onCargarOtro }: Props & {
     const result = await createProductAction({
       ...values,
       tiempoCargaSeg,
+      // El modo con el que se abrió el formulario (no el actual: el admin
+      // puede cambiarlo mientras está abierto).
+      modoCarga: asistido ? "asistido" : "manual",
       sugerenciaMostrada: Boolean(sugerencia?.disponible),
     });
     setGuardando(false);
