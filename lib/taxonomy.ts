@@ -24,6 +24,12 @@ export const CATEGORIAS_IA: Record<Departamento, readonly string[]> = {
   Supermercado: ["Bebidas", "Abarrotes y snacks", "Limpieza del hogar"],
 };
 
+// La IA clasifica entre las 21 categorías sin conocer el departamento;
+// este es el departamento al que pertenece cada una.
+export function departamentoDeCategoria(categoria: string): Departamento | null {
+  return DEPARTAMENTOS.find((d) => CATEGORIAS_IA[d].includes(categoria)) ?? null;
+}
+
 // Mismo criterio que la columna `slug` de departamentos/categorias en la
 // base ("Audio y audífonos" → "audio-y-audifonos"): sin tildes, minúsculas
 // y guiones. Las URLs del catálogo se arman con esto, no con el nombre.

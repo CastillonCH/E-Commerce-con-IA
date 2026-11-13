@@ -18,6 +18,11 @@ const serverEnvSchema = z.object({
   // corrige). "umbral": publica directo si confianza >= REVIEW_THRESHOLD.
   REVIEW_POLICY: z.enum(["todos", "umbral"]).default("todos"),
   REVIEW_THRESHOLD: z.coerce.number().min(0).max(1).default(0.75),
+  // Cómo carga productos el personal (ver db/migraciones/004_carga_asistida.sql):
+  // "asistido": la IA propone departamento y categoría ANTES de guardar y
+  // la persona confirma o corrige (uso normal). "experimento": elige sin
+  // ver a la IA, para medir la línea base del error y del tiempo manual.
+  MODO_CATALOGO: z.enum(["asistido", "experimento"]).default("asistido"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

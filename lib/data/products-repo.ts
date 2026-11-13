@@ -583,6 +583,11 @@ export interface CreateProductFromAIInput {
   stock: number;
   imagenUrl: string;
   clasificacion: ClasificarResponse | null;
+  // Medición de la carga (migración 004). "manual": eligió la categoría sin
+  // ver a la IA (línea base); "asistido": la IA se la propuso antes de guardar.
+  creadoPor?: string;
+  modoCarga?: "manual" | "asistido";
+  tiempoCargaSeg?: number;
 }
 
 export interface CreateProductFromAIResult {
@@ -607,9 +612,19 @@ export async function createProductFromAI(
     );
   }
 
+  // En modo asistido: ¿se quedó con la categoría que propuso la IA? La IA
+  // es determinista, así que la clasificación al guardar es la misma que
+  // vio en el formulario.
+  const asistido = input.modoCarga === "asistido";
+  const sugerenciaAceptada =
+    asistido && input.clasificacion
+      ? input.clasificacion.resultado.categoria === input.categoriaManualNombre
+      : null;
+
   const producto = await queryOne<{ id: string }>(
-    `INSERT INTO productos (proveedor_id, nombre, descripcion, marca_id, departamento_id, categoria_manual_id, precio, stock)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO productos (proveedor_id, nombre, descripcion, marca_id, departamento_id, categoria_manual_id, precio, stock,
+                            creado_por, modo_carga, tiempo_carga_seg, sugerencia_aceptada)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id::text AS id`,
     [
       input.proveedorId ?? null,
@@ -620,6 +635,10 @@ export async function createProductFromAI(
       categoriaManual.id,
       input.precio,
       input.stock,
+      input.creadoPor ?? null,
+      input.modoCarga ?? null,
+      input.tiempoCargaSeg ?? null,
+      sugerenciaAceptada,
     ],
   );
   const productoId = producto!.id;
@@ -643,8 +662,13 @@ export async function createProductFromAI(
 
   const { REVIEW_POLICY, REVIEW_THRESHOLD } = getServerEnv();
   const confianzaAlcanzaUmbral = input.clasificacion.resultado.confianza >= REVIEW_THRESHOLD;
+  // Si la persona corrigió a la IA (modo asistido), hay desacuerdo: que lo
+  // decida un administrador en /admin/revision.
   const puedePublicarDirecto =
-    REVIEW_POLICY === "umbral" && confianzaAlcanzaUmbral && categoriaSugerida !== null;
+    REVIEW_POLICY === "umbral" &&
+    confianzaAlcanzaUmbral &&
+    categoriaSugerida !== null &&
+    sugerenciaAceptada !== false;
 
   if (input.clasificacion.modo === "real") {
     await persistirPrediccionesYEmbeddings(productoId, imagenId, input.clasificacion);
@@ -793,11 +817,74 @@ export async function detectarYRegistrarDuplicados(
   return detectados;
 }
 
+// --- Aviso de duplicados ANTES de guardar (carga asistida) ----------------
+export interface PosibleDuplicado {
+  id: string;
+  nombre: string;
+  imagen: string | null;
+  similitud: number;
+}
+
+// Igual criterio que detectarYRegistrarDuplicados, pero con los embeddings
+// recién calculados de un producto que todavía no existe en la base: así
+// quien carga ve "este producto ya existe" antes de crear la ficha repetida.
+export async function buscarDuplicadosPorEmbeddings(
+  embeddings: ClasificarResponse["embeddings"],
+  umbral = 0.9,
+): Promise<PosibleDuplicado[]> {
+  const porVecino = new Map<string, { nombre: string; imagen: string | null; sims: number[] }>();
+  for (const embedding of embeddings) {
+    const modelo = await queryOne<{ id: number }>(`SELECT id FROM modelos_ia WHERE codigo = $1`, [
+      embedding.codigo_modelo,
+    ]);
+    if (!modelo) continue;
+
+    // MATERIALIZED: primero se filtra por modelo (todos sus vectores tienen
+    // la misma dimensión) y recién después se calcula la distancia.
+    const vecinos = await query<{ producto_id: string; nombre: string; imagen: string | null; similitud: number }>(
+      `WITH candidatos AS MATERIALIZED (
+         SELECT pe.producto_id, pe.embedding
+           FROM producto_embeddings pe
+           JOIN productos p ON p.id = pe.producto_id
+          WHERE pe.modelo_id = $1 AND p.estado <> 'archivado'
+       )
+       SELECT c.producto_id::text, p.nombre, img.url AS imagen,
+              (1 - (c.embedding <=> $2::vector))::float8 AS similitud
+         FROM candidatos c
+         JOIN productos p ON p.id = c.producto_id
+         LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+        WHERE 1 - (c.embedding <=> $2::vector) >= $3
+        ORDER BY c.embedding <=> $2::vector
+        LIMIT 5`,
+      [modelo.id, JSON.stringify(embedding.vector), umbral],
+    );
+    for (const vecino of vecinos) {
+      const entrada = porVecino.get(vecino.producto_id) ?? { nombre: vecino.nombre, imagen: vecino.imagen, sims: [] };
+      entrada.sims.push(vecino.similitud);
+      porVecino.set(vecino.producto_id, entrada);
+    }
+  }
+
+  return [...porVecino.entries()]
+    .map(([id, { nombre, imagen, sims }]) => ({
+      id,
+      nombre,
+      imagen,
+      similitud: sims.reduce((a, b) => a + b, 0) / sims.length,
+    }))
+    .sort((a, b) => b.similitud - a.similitud)
+    .slice(0, 3);
+}
+
 // --- Revisión de clasificaciones de IA con baja confianza -----------------
 export interface PendingReviewEntry {
   product: Product;
   confidence: number;
   creadoEn: string;
+  // Categoría que dejó quien cargó la ficha, y si la eligió viendo la
+  // sugerencia de la IA ("asistido") o a ciegas ("manual").
+  categoriaPersonal: string | null;
+  modoCarga: "manual" | "asistido" | null;
 }
 
 interface PendingRow extends ProductRow {
@@ -806,6 +893,8 @@ interface PendingRow extends ProductRow {
   prediccion_id: number | null;
   categoria_sugerida_id: number | null;
   confianza: number | null;
+  categoria_personal: string | null;
+  modo_carga: "manual" | "asistido" | null;
 }
 
 const SELECT_PENDIENTES = `
@@ -828,6 +917,8 @@ const SELECT_PENDIENTES = `
     pred.id                                                AS prediccion_id,
     pred.categoria_predicha_id                             AS categoria_sugerida_id,
     pred.confianza::float8                                 AS confianza,
+    cat_man.nombre                                         AS categoria_personal,
+    p.modo_carga,
     p.creado_en
   FROM productos p
   JOIN marcas m ON m.id = p.marca_id
@@ -841,6 +932,7 @@ const SELECT_PENDIENTES = `
     SELECT * FROM predicciones_ia WHERE producto_id = p.id ORDER BY confianza DESC NULLS LAST LIMIT 1
   ) pred ON true
   LEFT JOIN categorias cat_pred ON cat_pred.id = pred.categoria_predicha_id
+  LEFT JOIN categorias cat_man ON cat_man.id = p.categoria_manual_id
   WHERE p.estado = 'pendiente_revision'
 `;
 
@@ -849,6 +941,8 @@ function toPendingEntry(row: PendingRow): PendingReviewEntry {
     product: toProduct(row),
     confidence: row.confianza ?? 0,
     creadoEn: row.creado_en.toISOString(),
+    categoriaPersonal: row.categoria_personal,
+    modoCarga: row.modo_carga,
   };
 }
 

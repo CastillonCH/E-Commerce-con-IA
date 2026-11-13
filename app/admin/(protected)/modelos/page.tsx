@@ -9,19 +9,31 @@ import {
   obtenerMetricasClasificacion,
   obtenerMetricasDuplicados,
 } from "@/lib/data/modelos-repo";
+import {
+  ahorroPorcentual,
+  formatearDuracion,
+  obtenerMetricasCarga,
+  obtenerMetricasCargaPorPersona,
+} from "@/lib/data/carga-repo";
+import { getServerEnv } from "@/lib/env.server";
 import { cn } from "@/lib/utils";
 
 export default async function AdminModelosPage() {
   const session = await getSession();
   if (session?.role !== "ADMIN") redirect("/admin/dashboard");
 
-  const [salud, modelos, metricasClasificacion, lineaBase, metricasDuplicados] = await Promise.all([
-    obtenerSaludIA(),
-    listModelosIA(),
-    obtenerMetricasClasificacion(),
-    obtenerLineaBase(),
-    obtenerMetricasDuplicados(),
-  ]);
+  const [salud, modelos, metricasClasificacion, lineaBase, metricasDuplicados, carga, cargaPorPersona] =
+    await Promise.all([
+      obtenerSaludIA(),
+      listModelosIA(),
+      obtenerMetricasClasificacion(),
+      obtenerLineaBase(),
+      obtenerMetricasDuplicados(),
+      obtenerMetricasCarga(),
+      obtenerMetricasCargaPorPersona(),
+    ]);
+  const ahorro = ahorroPorcentual(carga);
+  const modoCatalogo = getServerEnv().MODO_CATALOGO;
 
   return (
     <div className="flex flex-col gap-8">
@@ -150,11 +162,94 @@ export default async function AdminModelosPage() {
         </div>
       </div>
 
+      {/* Tiempo de carga del personal: manual vs con la IA */}
+      <div>
+        <h2 className="mb-1 text-lg font-semibold text-slate-900">
+          Tiempo de carga por ficha: sin IA vs con IA
+        </h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Desde que empieza a llenar el formulario hasta que guarda. Modo actual:{" "}
+          <strong>{modoCatalogo === "asistido" ? "asistido (la IA propone antes de guardar)" : "experimento (sin ver a la IA)"}</strong>
+          {" "}— se cambia con MODO_CATALOGO en .env.local.
+        </p>
+        {!carga.manual && !carga.asistido ? (
+          <EstadoVacio mensaje="Todavía no hay fichas cargadas con la medición de tiempo." />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Tarjeta
+                etiqueta={`Sin IA (${carga.manual?.fichas ?? 0} fichas)`}
+                valor={formatearDuracion(carga.manual?.segMediana)}
+              />
+              <Tarjeta
+                etiqueta={`Con IA (${carga.asistido?.fichas ?? 0} fichas)`}
+                valor={formatearDuracion(carga.asistido?.segMediana)}
+              />
+              <Tarjeta
+                etiqueta="Ahorro de tiempo"
+                valor={ahorro !== null ? `${ahorro}%` : "—"}
+                resaltado={ahorro !== null && ahorro > 0}
+              />
+              <Tarjeta
+                etiqueta="Sugerencias aceptadas"
+                valor={
+                  carga.asistido?.pctSugerenciasAceptadas !== null && carga.asistido?.pctSugerenciasAceptadas !== undefined
+                    ? `${carga.asistido.pctSugerenciasAceptadas}%`
+                    : "—"
+                }
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Tiempos en mediana (no los distorsiona una ficha que quedó abierta mucho rato).
+              % de error de categoría: sin IA {carga.manual?.pctError ?? "—"}% · con IA {carga.asistido?.pctError ?? "—"}%
+              {" "}(sobre fichas con categoría final confirmada).
+            </p>
+            {cargaPorPersona.length > 0 && (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <caption className="sr-only">Tiempo de carga por persona</caption>
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th scope="col" className="px-4 py-3 font-medium">Persona</th>
+                      <th scope="col" className="px-4 py-3 font-medium">Fichas</th>
+                      <th scope="col" className="px-4 py-3 font-medium">Sin IA</th>
+                      <th scope="col" className="px-4 py-3 font-medium">Con IA</th>
+                      <th scope="col" className="px-4 py-3 font-medium">Sugerencias aceptadas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cargaPorPersona.map((persona) => (
+                      <tr key={persona.email} className="border-b border-slate-100 text-slate-700 last:border-0">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-900">{persona.nombre}</p>
+                          <p className="text-xs text-slate-500">{persona.email}</p>
+                        </td>
+                        <td className="px-4 py-3">{(persona.manual?.fichas ?? 0) + (persona.asistido?.fichas ?? 0)}</td>
+                        <td className="px-4 py-3">{formatearDuracion(persona.manual?.segMediana)}</td>
+                        <td className="px-4 py-3">{formatearDuracion(persona.asistido?.segMediana)}</td>
+                        <td className="px-4 py-3">
+                          {persona.asistido?.pctSugerenciasAceptadas !== null && persona.asistido?.pctSugerenciasAceptadas !== undefined
+                            ? `${persona.asistido.pctSugerenciasAceptadas}%`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* Línea base del problema (T1 1.2.1) */}
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">
           Línea base: categorización manual (sin IA)
         </h2>
+        <p className="mb-3 text-sm text-slate-500">
+          No cuenta las fichas cargadas con la sugerencia a la vista: la línea base solo vale si se eligió a ciegas.
+        </p>
         {lineaBase.conCategoriaManual === 0 ? (
           <EstadoVacio mensaje="Todavía no hay productos con categoría elegida a mano para medir esto." />
         ) : (

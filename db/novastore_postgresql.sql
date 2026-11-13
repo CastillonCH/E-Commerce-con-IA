@@ -72,6 +72,7 @@ CREATE TYPE estado_modelo      AS ENUM ('planificado', 'entrenando', 'evaluado',
 CREATE TYPE fuente_embedding   AS ENUM ('imagen', 'texto');
 CREATE TYPE accion_revision    AS ENUM ('aceptada', 'corregida');
 CREATE TYPE estado_duplicado   AS ENUM ('pendiente', 'confirmado', 'descartado');
+CREATE TYPE modo_carga         AS ENUM ('manual', 'asistido');
 
 -- -----------------------------------------------------------------------------
 -- 3. Función genérica para mantener "actualizado_en"
@@ -232,6 +233,14 @@ CREATE TABLE productos (
     rating_promedio        numeric(2,1)  NOT NULL DEFAULT 0 CHECK (rating_promedio BETWEEN 0 AND 5),
     num_resenas            integer       NOT NULL DEFAULT 0 CHECK (num_resenas >= 0),
     revisado_por           uuid          REFERENCES usuarios(id) ON DELETE SET NULL,
+    -- Medición de la carga (ver db/migraciones/004_carga_asistida.sql):
+    -- quién la cargó, si eligió la categoría sin ver a la IA ('manual',
+    -- línea base) o con su sugerencia ('asistido'), cuánto tardó y si se
+    -- quedó con la categoría propuesta. NULL = ficha anterior a la medición.
+    creado_por             uuid          REFERENCES usuarios(id) ON DELETE SET NULL,
+    modo_carga             modo_carga,
+    tiempo_carga_seg       integer       CHECK (tiempo_carga_seg BETWEEN 1 AND 7200),
+    sugerencia_aceptada    boolean,
     publicado_en           timestamptz,
     creado_en              timestamptz   NOT NULL DEFAULT now(),
     actualizado_en         timestamptz   NOT NULL DEFAULT now(),
@@ -246,8 +255,11 @@ CREATE TABLE productos (
     CONSTRAINT fk_productos_categoria_depto
         FOREIGN KEY (categoria_id, departamento_id) REFERENCES categorias (id, departamento_id),
     CONSTRAINT ck_productos_publicado_con_categoria
-        CHECK (estado <> 'publicado' OR categoria_id IS NOT NULL)
+        CHECK (estado <> 'publicado' OR categoria_id IS NOT NULL),
+    CONSTRAINT ck_productos_sugerencia_solo_asistido
+        CHECK (sugerencia_aceptada IS NULL OR modo_carga = 'asistido')
 );
+CREATE INDEX ix_productos_creado_por ON productos (creado_por);
 COMMENT ON COLUMN productos.proveedor_id IS 'Proveedor al que se le compra (opcional). No afecta si el producto se vende.';
 COMMENT ON COLUMN productos.categoria_manual_id IS 'Categoría que eligió a mano el personal al cargar el producto (línea base frente a la IA).';
 COMMENT ON COLUMN productos.categoria_id IS 'Categoría definitiva usada por la tienda; etiqueta del dataset de entrenamiento.';
@@ -699,6 +711,40 @@ LANGUAGE sql STABLE AS $$
      LIMIT p_k
 $$;
 
+-- Tiempo de carga y error de categoría por modo (manual vs asistido por la
+-- IA). p_usuario NULL = todo el personal. "Error" compara la categoría que
+-- dejó quien cargó con la categoría final confirmada.
+CREATE FUNCTION fn_metricas_carga(p_usuario uuid DEFAULT NULL)
+RETURNS TABLE (
+    modo                      modo_carga,
+    fichas                    integer,
+    seg_promedio              numeric,
+    seg_mediana               numeric,
+    con_categoria_final       integer,
+    mal_categorizadas         integer,
+    pct_error                 numeric,
+    pct_sugerencias_aceptadas numeric
+)
+LANGUAGE sql STABLE
+SET search_path = novastore, public
+AS $$
+    SELECT p.modo_carga,
+           count(*)::int,
+           round(avg(p.tiempo_carga_seg), 1),
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY p.tiempo_carga_seg))::numeric, 1),
+           count(*) FILTER (WHERE p.categoria_id IS NOT NULL)::int,
+           count(*) FILTER (WHERE p.categoria_manual_id <> p.categoria_id)::int,
+           round(100.0 * count(*) FILTER (WHERE p.categoria_manual_id <> p.categoria_id)
+                 / nullif(count(*) FILTER (WHERE p.categoria_id IS NOT NULL), 0), 2),
+           round(100.0 * count(*) FILTER (WHERE p.sugerencia_aceptada)
+                 / nullif(count(*) FILTER (WHERE p.sugerencia_aceptada IS NOT NULL), 0), 2)
+      FROM productos p
+     WHERE p.modo_carga IS NOT NULL
+       AND (p_usuario IS NULL OR p.creado_por = p_usuario)
+     GROUP BY p.modo_carga
+     ORDER BY p.modo_carga
+$$;
+
 -- =============================================================================
 -- 9. VISTAS (con los mismos nombres de campo que usa el frontend)
 -- =============================================================================
@@ -792,7 +838,9 @@ SELECT count(*)                                                                A
        round(100.0 * count(*) FILTER (WHERE categoria_manual_id <> categoria_id)
              / nullif(count(*) FILTER (WHERE categoria_manual_id IS NOT NULL), 0), 2) AS pct_error_manual
   FROM productos
- WHERE categoria_id IS NOT NULL;
+ WHERE categoria_id IS NOT NULL
+   -- Solo vale si la persona eligió sin ver la sugerencia de la IA.
+   AND modo_carga IS DISTINCT FROM 'asistido';
 
 -- Precisión de CU5 sobre pares verificados manualmente (meta OE3 ≥ 90 %).
 CREATE VIEW v_metricas_duplicados AS
@@ -1304,6 +1352,34 @@ BEGIN
     ASSERT EXISTS (SELECT 1 FROM productos
                     WHERE f_unaccent(lower(nombre)) LIKE '%' || f_unaccent(lower('audifonos')) || '%'), 'búsqueda sin tildes falló';
     RAISE NOTICE 'OK 14 búsqueda';
+END $$;
+
+-- 15. Carga asistida: la línea base ignora las fichas asistidas y se mide el tiempo
+DO $$
+DECLARE
+    v_cat  uuid    := (SELECT id FROM usuarios WHERE email = 'catalogo@novastore.pe');
+    v_base integer := (SELECT con_categoria_manual FROM v_linea_base_categorizacion);
+    v_m    record;
+BEGIN
+    INSERT INTO productos (nombre, marca_id, departamento_id, categoria_manual_id, categoria_id, precio,
+                           creado_por, modo_carga, tiempo_carga_seg, sugerencia_aceptada)
+    VALUES ('Ficha asistida de prueba', 1, 1, 1, 1, 10, v_cat, 'asistido',  60, true),
+           ('Ficha manual de prueba',   1, 1, 2, 1, 10, v_cat, 'manual',   180, NULL);
+
+    ASSERT (SELECT con_categoria_manual FROM v_linea_base_categorizacion) = v_base + 1,
+        'la línea base contó una ficha asistida';
+    SELECT * INTO v_m FROM fn_metricas_carga(v_cat) WHERE modo = 'asistido';
+    ASSERT v_m.fichas = 1 AND v_m.seg_mediana = 60 AND v_m.pct_sugerencias_aceptadas = 100, 'métricas asistidas';
+    SELECT * INTO v_m FROM fn_metricas_carga(v_cat) WHERE modo = 'manual';
+    ASSERT v_m.fichas = 1 AND v_m.seg_mediana = 180 AND v_m.pct_error = 100, 'métricas manuales';
+
+    BEGIN
+        INSERT INTO productos (nombre, marca_id, departamento_id, precio, modo_carga, sugerencia_aceptada)
+        VALUES ('Incoherente', 1, 1, 10, 'manual', true);
+        RAISE EXCEPTION 'FALLO: aceptó una sugerencia en modo manual';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    RAISE NOTICE 'OK 15 carga asistida y tiempo de carga';
 END $$;
 
 ROLLBACK;

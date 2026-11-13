@@ -1,5 +1,7 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { closePool } from "@/lib/db";
+import { closePool, queryOne } from "@/lib/db";
+import { crearMiembroPersonal } from "@/lib/data/users-repo";
+import { obtenerMetricasCarga, ahorroPorcentual } from "@/lib/data/carga-repo";
 import type { ClasificarResponse } from "@/lib/ai-client";
 import {
   listProducts,
@@ -23,6 +25,7 @@ import {
   listDetectedDuplicates,
   resolveDuplicate,
   detectarYRegistrarDuplicados,
+  buscarDuplicadosPorEmbeddings,
   getCategoriaManualNombre,
 } from "@/lib/data/products-repo";
 
@@ -691,6 +694,139 @@ describe.skipIf(!process.env.DATABASE_URL)(
         expect((await getAdminProductById(a.productId))?.estado).not.toBe("archivado");
         // Ya resuelto: no se puede volver a resolver.
         expect((await resolveDuplicate(par!.id, "descartado", "admin@novastore.pe")).ok).toBe(false);
+      });
+    });
+
+    describe("carga asistida por la IA (migración 004)", () => {
+      async function medicion(productId: string) {
+        return queryOne<{ modo_carga: string | null; tiempo_carga_seg: number | null; sugerencia_aceptada: boolean | null }>(
+          `SELECT modo_carga, tiempo_carga_seg, sugerencia_aceptada FROM productos WHERE id = $1`,
+          [productId],
+        );
+      }
+
+      it("asistido y aceptó la sugerencia segura: se publica y queda medido", async () => {
+        process.env.REVIEW_POLICY = "umbral";
+        process.env.REVIEW_THRESHOLD = "0.75";
+        const result = await createProductFromAI({
+          nombre: "Audífonos Asistidos Aceptados",
+          descripcion: "Audífonos cargados con la sugerencia de la IA a la vista.",
+          marca: "SoundMax",
+          departamento: "Electrónica",
+          categoriaManualNombre: "Audio y audífonos",
+          precio: 89.9,
+          stock: 4,
+          imagenUrl: "https://example.com/asistido-ok.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.95 }),
+          modoCarga: "asistido",
+          tiempoCargaSeg: 42,
+        });
+        expect(result.pendingReview).toBe(false);
+        expect(await medicion(result.productId)).toEqual({
+          modo_carga: "asistido",
+          tiempo_carga_seg: 42,
+          sugerencia_aceptada: true,
+        });
+      });
+
+      it("asistido pero corrigió a la IA: va a revisión aunque la IA estuviera segura", async () => {
+        process.env.REVIEW_POLICY = "umbral";
+        process.env.REVIEW_THRESHOLD = "0.75";
+        const result = await createProductFromAI({
+          nombre: "Smartwatch Corregido Por Persona",
+          descripcion: "La IA dijo audio, pero la persona eligió relojes inteligentes.",
+          marca: "SoundMax",
+          departamento: "Electrónica",
+          categoriaManualNombre: "Relojes inteligentes y wearables",
+          precio: 199.9,
+          stock: 2,
+          imagenUrl: "https://example.com/asistido-corregido.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.95 }),
+          modoCarga: "asistido",
+          tiempoCargaSeg: 75,
+        });
+        expect(result.pendingReview).toBe(true);
+        expect((await medicion(result.productId))?.sugerencia_aceptada).toBe(false);
+        const enRevision = (await listPendingReview()).find((e) => e.product.id === result.productId);
+        expect(enRevision).toMatchObject({
+          modoCarga: "asistido",
+          categoriaPersonal: "Relojes inteligentes y wearables",
+        });
+      });
+
+      it("manual (experimento): no registra sugerencia y sigue la regla de siempre", async () => {
+        process.env.REVIEW_POLICY = "todos";
+        const result = await createProductFromAI({
+          nombre: "Licuadora Carga Manual",
+          descripcion: "Licuadora cargada eligiendo la categoría sin ver a la IA.",
+          marca: "HomeChef",
+          departamento: "Hogar",
+          categoriaManualNombre: "Electrodomésticos de cocina",
+          precio: 159.9,
+          stock: 3,
+          imagenUrl: "https://example.com/manual.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Electrodomésticos de cocina", confianza: 0.95 }),
+          modoCarga: "manual",
+          tiempoCargaSeg: 120,
+        });
+        expect(await medicion(result.productId)).toEqual({
+          modo_carga: "manual",
+          tiempo_carga_seg: 120,
+          sugerencia_aceptada: null,
+        });
+      });
+
+      it("avisa ANTES de guardar si el producto parece ya existir", async () => {
+        process.env.REVIEW_POLICY = "todos";
+        const existente = clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.9 });
+        const creado = await createProductFromAI({
+          nombre: "Parlante Que Ya Existe",
+          descripcion: "Producto ya cargado; otro igual no debería crearse de nuevo.",
+          marca: "SoundMax",
+          departamento: "Electrónica",
+          categoriaManualNombre: "Audio y audífonos",
+          precio: 79.9,
+          stock: 6,
+          imagenUrl: "https://example.com/ya-existe.jpg",
+          clasificacion: existente,
+        });
+
+        // El "nuevo" todavía no está en la base: solo hay sus embeddings.
+        const casiIguales = existente.embeddings.map((e) => ({ ...e, vector: e.vector.map((v) => v + 0.0001) }));
+        const avisos = await buscarDuplicadosPorEmbeddings(casiIguales);
+        expect(avisos[0]).toMatchObject({ id: creado.productId, nombre: "Parlante Que Ya Existe" });
+        expect(avisos[0].similitud).toBeGreaterThan(0.99);
+
+        const distintos = clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.9 }).embeddings.map((e) => ({
+          ...e,
+          vector: e.vector.map((v, i) => (i % 2 === 0 ? v : -v)),
+        }));
+        expect((await buscarDuplicadosPorEmbeddings(distintos)).some((a) => a.id === creado.productId)).toBe(false);
+      });
+
+      it("las métricas comparan el tiempo sin IA vs con IA de cada persona", async () => {
+        process.env.REVIEW_POLICY = "todos";
+        const email = `carga-${Date.now()}@novastore.pe`;
+        const { id } = await crearMiembroPersonal({ nombre: "Carga Medida", email, rol: "CATALOGO" });
+        const base = {
+          descripcion: "Ficha para medir el tiempo de carga de una persona.",
+          marca: "SoundMax",
+          departamento: "Electrónica" as const,
+          categoriaManualNombre: "Audio y audífonos",
+          precio: 50,
+          stock: 1,
+          imagenUrl: "https://example.com/metricas.jpg",
+          clasificacion: clasificacionFalsa({ categoria: "Audio y audífonos", confianza: 0.9 }),
+          creadoPor: id,
+        };
+        await createProductFromAI({ ...base, nombre: "Medida Manual 1", modoCarga: "manual", tiempoCargaSeg: 200 });
+        await createProductFromAI({ ...base, nombre: "Medida Manual 2", modoCarga: "manual", tiempoCargaSeg: 160 });
+        await createProductFromAI({ ...base, nombre: "Medida Asistida", modoCarga: "asistido", tiempoCargaSeg: 60 });
+
+        const mias = await obtenerMetricasCarga(email);
+        expect(mias.manual).toMatchObject({ fichas: 2, segMediana: 180 });
+        expect(mias.asistido).toMatchObject({ fichas: 1, segMediana: 60, pctSugerenciasAceptadas: 100 });
+        expect(ahorroPorcentual(mias)).toBe(67);
       });
     });
 

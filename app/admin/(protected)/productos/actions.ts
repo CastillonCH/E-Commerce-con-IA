@@ -3,17 +3,21 @@
 import { z } from "zod";
 import { canManageProducts, getSession } from "@/lib/auth";
 import { clasificarProducto } from "@/lib/ai-client";
+import { getServerEnv } from "@/lib/env.server";
+import { findUserByEmail } from "@/lib/data/users-repo";
 import { eliminarImagenProducto, guardarImagenProducto } from "@/lib/storage";
 import {
   createProductFromAI,
   detectarYRegistrarDuplicados,
+  buscarDuplicadosPorEmbeddings,
+  type PosibleDuplicado,
   reclassifyProduct,
   updateProductRecord,
   cambiarEstadoProducto,
   eliminarProductoDefinitivo,
   type AccionEstado,
 } from "@/lib/data/products-repo";
-import { DEPARTAMENTOS, CATEGORIAS_IA } from "@/lib/taxonomy";
+import { DEPARTAMENTOS, CATEGORIAS_IA, departamentoDeCategoria, type Departamento } from "@/lib/taxonomy";
 import type { AIResultado, ProductStatus } from "@/types";
 
 // "" (opción "Sin proveedor" del <select>) → sin proveedor.
@@ -38,11 +42,103 @@ const createProductSchema = z
     categoriaManual: z.string().min(1, "Selecciona una categoría"),
     proveedorId: proveedorIdSchema,
     imagen: z.instanceof(File),
+    // Medición (migración 004): segundos desde que empezó a llenar el
+    // formulario, y si llegó a ver la sugerencia de la IA antes de guardar.
+    // Fuera de rango (formulario olvidado abierto, reloj raro) no se guarda.
+    tiempoCargaSeg: z
+      .number()
+      .optional()
+      .transform((seg) => (seg !== undefined && seg >= 1 && seg <= 7200 ? Math.round(seg) : undefined)),
+    sugerenciaMostrada: z.boolean().optional(),
   })
   .refine(
     (data) => (CATEGORIAS_IA[data.departamento] as readonly string[]).includes(data.categoriaManual),
     { message: "La categoría no pertenece al departamento elegido.", path: ["categoriaManual"] },
   );
+
+// --- "La IA primero": sugerencia ANTES de guardar --------------------------
+export interface SugerenciaCategoria {
+  categoria: string;
+  departamento: Departamento;
+  prob: number;
+}
+
+export interface SugerirResult {
+  // false: la IA no está disponible (o el modo experimento la oculta) —
+  // el formulario sigue funcionando y se elige a mano.
+  disponible: boolean;
+  aviso?: string;
+  modo?: "real" | "demo";
+  sugerencia?: SugerenciaCategoria;
+  confianza?: number;
+  alternativas?: SugerenciaCategoria[];
+  duplicados?: PosibleDuplicado[];
+}
+
+const sugerirSchema = z.object({
+  nombre: z.string().trim().min(2),
+  descripcion: z.string().trim().min(20).max(2000),
+  imagen: z.instanceof(File),
+});
+
+export async function sugerirCategoriaAction(input: unknown): Promise<SugerirResult> {
+  const session = await getSession();
+  if (!session || !canManageProducts(session.role)) {
+    return { disponible: false, aviso: "No autorizado." };
+  }
+  // En modo experimento quien carga debe elegir sin ver a la IA (línea base).
+  if (getServerEnv().MODO_CATALOGO !== "asistido") return { disponible: false };
+
+  const parsed = sugerirSchema.safeParse(input);
+  if (!parsed.success) return { disponible: false, aviso: "Faltan la foto, el nombre o la descripción." };
+
+  let clasificacion: Awaited<ReturnType<typeof clasificarProducto>>;
+  try {
+    clasificacion = await clasificarProducto({
+      titulo: parsed.data.nombre,
+      descripcion: parsed.data.descripcion,
+      imagen: parsed.data.imagen,
+    });
+  } catch {
+    return {
+      disponible: false,
+      aviso: "La IA no está disponible en este momento: elige el departamento y la categoría a mano.",
+    };
+  }
+
+  const conDepartamento = (categoria: string, prob: number): SugerenciaCategoria | null => {
+    const departamento = departamentoDeCategoria(categoria);
+    return departamento ? { categoria, departamento, prob } : null;
+  };
+
+  const sugerencia = conDepartamento(clasificacion.resultado.categoria, clasificacion.resultado.confianza);
+  if (!sugerencia) return { disponible: false, aviso: "La IA devolvió una categoría desconocida." };
+
+  const alternativas = clasificacion.resultado.top_k
+    .filter((t) => t.categoria !== sugerencia.categoria)
+    .map((t) => conDepartamento(t.categoria, t.prob))
+    .filter((t): t is SugerenciaCategoria => t !== null)
+    .slice(0, 3);
+
+  // Solo con modelos reales hay embeddings comparables; nunca bloquea.
+  let duplicados: PosibleDuplicado[] = [];
+  if (clasificacion.modo === "real" && clasificacion.embeddings.length > 0) {
+    try {
+      duplicados = await buscarDuplicadosPorEmbeddings(clasificacion.embeddings);
+    } catch {
+      duplicados = [];
+    }
+  }
+
+  return {
+    disponible: true,
+    modo: clasificacion.modo,
+    sugerencia,
+    confianza: clasificacion.resultado.confianza,
+    alternativas,
+    duplicados,
+  };
+}
 
 export interface CreateProductResult {
   success: boolean;
@@ -100,8 +196,17 @@ export async function createProductAction(
     void error;
   }
 
+  // "asistido" solo si de verdad vio la sugerencia: si la IA no respondió
+  // en el formulario, eligió a ciegas y cuenta como carga manual.
+  const modoCarga =
+    getServerEnv().MODO_CATALOGO === "asistido" && parsed.data.sugerenciaMostrada ? "asistido" : "manual";
+  const creadoPor = (await findUserByEmail(session.email))?.id;
+
   try {
     const { pendingReview, productId } = await createProductFromAI({
+      creadoPor,
+      modoCarga,
+      tiempoCargaSeg: parsed.data.tiempoCargaSeg,
       proveedorId: parsed.data.proveedorId,
       nombre: parsed.data.nombre,
       descripcion: parsed.data.descripcion,

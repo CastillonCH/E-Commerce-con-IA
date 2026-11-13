@@ -122,6 +122,13 @@ export function ReviewQueue({ items }: { items: PendingReviewEntry[] }) {
                 IA sugirió &ldquo;{entry.product.categoria_ia}&rdquo; con{" "}
                 {Math.round(entry.confidence * 100)}% de confianza
               </p>
+              {entry.modoCarga === "asistido" &&
+                entry.categoriaPersonal &&
+                entry.categoriaPersonal !== entry.product.categoria_ia && (
+                  <p className="mt-0.5 text-xs font-medium text-slate-600">
+                    Quien lo cargó la corrigió a &ldquo;{entry.categoriaPersonal}&rdquo;
+                  </p>
+                )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
