@@ -798,62 +798,129 @@ async function persistirPrediccionesYEmbeddings(
 }
 
 // --- CU5: detección de duplicados a partir de los embeddings guardados ----
+//
+// Regla (elegida con ml/evaluar_duplicados.py en VALIDACIÓN y medida en
+// PRUEBA con pares simulados): un producto es posible duplicado si el
+// PROMEDIO de la similitud coseno de los tres modelos (ResNet-50,
+// EfficientNet-B0 y BETO) llega a UMBRAL_DUPLICADO. Prueba: precisión
+// 93,4 % (meta OE3 >= 90 %), encuentra el 70 % de los duplicados.
+// La regla anterior ("cualquier modelo >= 0,90") daba 27 % de precisión:
+// BETO pone cerca textos distintos y disparaba avisos falsos.
+export const UMBRAL_DUPLICADO = 0.85;
+// Vecinos por modelo que se consideran antes de promediar.
+const CANDIDATOS_POR_MODELO = 20;
+
 export interface DuplicadoDetectado {
   productoId: string;
   similitud: number;
 }
 
-// Corre fn_buscar_duplicados (similitud coseno, pgvector) por cada modelo
-// con el que el producto tenga embedding, y guarda los pares por encima del
-// umbral en duplicados_detectados para que /admin/duplicados los revise.
+interface FuenteEmbedding {
+  modeloId: number;
+  tipo: string;
+  vector: string; // formato texto de pgvector: "[0.1,0.2,...]"
+}
+
+interface VecinoCombinado {
+  productoId: string;
+  imagen: number | null;
+  texto: number | null;
+  combinada: number;
+}
+
+const promedio = (valores: number[]) =>
+  valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+
+// Busca los vecinos más cercanos de cada modelo, calcula la similitud de
+// CADA modelo para todos esos candidatos y se queda con los que tienen el
+// promedio >= umbral. Excluye productos archivados (un duplicado
+// confirmado se archiva) y, si se indica, el propio producto.
+async function vecinosPorPromedio(
+  fuentes: FuenteEmbedding[],
+  umbral: number,
+  excluirId: string | null,
+): Promise<VecinoCombinado[]> {
+  const candidatos = new Set<string>();
+  for (const fuente of fuentes) {
+    // MATERIALIZED: primero se filtra por modelo (todos sus vectores tienen
+    // la misma dimensión) y recién después se calcula la distancia.
+    const vecinos = await query<{ producto_id: string }>(
+      `WITH candidatos AS MATERIALIZED (
+         SELECT pe.producto_id, pe.embedding
+           FROM producto_embeddings pe
+           JOIN productos p ON p.id = pe.producto_id
+          WHERE pe.modelo_id = $1 AND p.estado <> 'archivado'
+            AND ($3::bigint IS NULL OR pe.producto_id <> $3::bigint)
+       )
+       SELECT producto_id::text FROM candidatos
+        ORDER BY embedding <=> $2::vector
+        LIMIT ${CANDIDATOS_POR_MODELO}`,
+      [fuente.modeloId, fuente.vector, excluirId],
+    );
+    for (const v of vecinos) candidatos.add(v.producto_id);
+  }
+  if (candidatos.size === 0) return [];
+
+  const sims = new Map<string, { imagen: number[]; texto: number[] }>();
+  for (const fuente of fuentes) {
+    const filas = await query<{ producto_id: string; similitud: number }>(
+      `SELECT producto_id::text, (1 - (embedding <=> $2::vector))::float8 AS similitud
+         FROM producto_embeddings
+        WHERE modelo_id = $1 AND producto_id = ANY($3::bigint[])`,
+      [fuente.modeloId, fuente.vector, [...candidatos]],
+    );
+    for (const fila of filas) {
+      const entrada = sims.get(fila.producto_id) ?? { imagen: [], texto: [] };
+      (fuente.tipo === "imagen" ? entrada.imagen : entrada.texto).push(Number(fila.similitud));
+      sims.set(fila.producto_id, entrada);
+    }
+  }
+
+  const resultado: VecinoCombinado[] = [];
+  for (const [productoId, { imagen, texto }] of sims) {
+    const combinada = promedio([...imagen, ...texto]);
+    if (combinada === null || combinada < umbral) continue;
+    resultado.push({ productoId, imagen: promedio(imagen), texto: promedio(texto), combinada });
+  }
+  return resultado.sort((a, b) => b.combinada - a.combinada);
+}
+
+// Corre la regla con los embeddings ya guardados del producto y registra
+// los pares en duplicados_detectados para que /admin/duplicados los revise.
 // Se llama después de persistirPrediccionesYEmbeddings — nunca en modo demo
 // (no hay embeddings guardados, ver persistirPrediccionesYEmbeddings).
 export async function detectarYRegistrarDuplicados(
   productoId: string,
-  umbral = 0.9,
+  umbral = UMBRAL_DUPLICADO,
 ): Promise<DuplicadoDetectado[]> {
-  const modelosConEmbedding = await query<{ modelo_id: number; tipo: string }>(
-    `SELECT pe.modelo_id, m.tipo
+  const fuentes = await query<{ modelo_id: number; tipo: string; vector: string }>(
+    `SELECT pe.modelo_id, m.tipo, pe.embedding::text AS vector
        FROM producto_embeddings pe
        JOIN modelos_ia m ON m.id = pe.modelo_id
       WHERE pe.producto_id = $1`,
     [productoId],
   );
-
-  const porVecino = new Map<string, { imagen?: number; texto?: number }>();
-  for (const { modelo_id, tipo } of modelosConEmbedding) {
-    const vecinos = await query<{ producto_id: string; similitud: number }>(
-      `SELECT producto_id::text, similitud FROM fn_buscar_duplicados($1, $2, $3, 5)`,
-      [productoId, modelo_id, umbral],
-    );
-    for (const vecino of vecinos) {
-      const entrada = porVecino.get(vecino.producto_id) ?? {};
-      if (tipo === "imagen") entrada.imagen = vecino.similitud;
-      else entrada.texto = vecino.similitud;
-      porVecino.set(vecino.producto_id, entrada);
-    }
-  }
+  const vecinos = await vecinosPorPromedio(
+    fuentes.map((f) => ({ modeloId: f.modelo_id, tipo: f.tipo, vector: f.vector })),
+    umbral,
+    productoId,
+  );
 
   const detectados: DuplicadoDetectado[] = [];
-  for (const [vecinoId, sims] of porVecino) {
-    const componentes = [sims.imagen, sims.texto].filter(
-      (v): v is number => v !== undefined,
-    );
-    const combinada = componentes.reduce((a, b) => a + b, 0) / componentes.length;
-
+  for (const vecino of vecinos.slice(0, 5)) {
     const [a, b] =
-      BigInt(productoId) < BigInt(vecinoId)
-        ? [productoId, vecinoId]
-        : [vecinoId, productoId];
+      BigInt(productoId) < BigInt(vecino.productoId)
+        ? [productoId, vecino.productoId]
+        : [vecino.productoId, productoId];
 
     await query(
       `INSERT INTO duplicados_detectados
          (producto_a_id, producto_b_id, similitud_texto, similitud_imagen, similitud_combinada, umbral_usado)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (producto_a_id, producto_b_id) DO NOTHING`,
-      [a, b, sims.texto ?? null, sims.imagen ?? null, combinada, umbral],
+      [a, b, vecino.texto, vecino.imagen, vecino.combinada, umbral],
     );
-    detectados.push({ productoId: vecinoId, similitud: combinada });
+    detectados.push({ productoId: vecino.productoId, similitud: vecino.combinada });
   }
 
   return detectados;
@@ -867,55 +934,36 @@ export interface PosibleDuplicado {
   similitud: number;
 }
 
-// Igual criterio que detectarYRegistrarDuplicados, pero con los embeddings
+// Misma regla que detectarYRegistrarDuplicados, pero con los embeddings
 // recién calculados de un producto que todavía no existe en la base: así
 // quien carga ve "este producto ya existe" antes de crear la ficha repetida.
 export async function buscarDuplicadosPorEmbeddings(
   embeddings: ClasificarResponse["embeddings"],
-  umbral = 0.9,
+  umbral = UMBRAL_DUPLICADO,
 ): Promise<PosibleDuplicado[]> {
-  const porVecino = new Map<string, { nombre: string; imagen: string | null; sims: number[] }>();
+  const fuentes: FuenteEmbedding[] = [];
   for (const embedding of embeddings) {
-    const modelo = await queryOne<{ id: number }>(`SELECT id FROM modelos_ia WHERE codigo = $1`, [
-      embedding.codigo_modelo,
-    ]);
-    if (!modelo) continue;
-
-    // MATERIALIZED: primero se filtra por modelo (todos sus vectores tienen
-    // la misma dimensión) y recién después se calcula la distancia.
-    const vecinos = await query<{ producto_id: string; nombre: string; imagen: string | null; similitud: number }>(
-      `WITH candidatos AS MATERIALIZED (
-         SELECT pe.producto_id, pe.embedding
-           FROM producto_embeddings pe
-           JOIN productos p ON p.id = pe.producto_id
-          WHERE pe.modelo_id = $1 AND p.estado <> 'archivado'
-       )
-       SELECT c.producto_id::text, p.nombre, img.url AS imagen,
-              (1 - (c.embedding <=> $2::vector))::float8 AS similitud
-         FROM candidatos c
-         JOIN productos p ON p.id = c.producto_id
-         LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
-        WHERE 1 - (c.embedding <=> $2::vector) >= $3
-        ORDER BY c.embedding <=> $2::vector
-        LIMIT 5`,
-      [modelo.id, JSON.stringify(embedding.vector), umbral],
+    const modelo = await queryOne<{ id: number; tipo: string }>(
+      `SELECT id, tipo FROM modelos_ia WHERE codigo = $1`,
+      [embedding.codigo_modelo],
     );
-    for (const vecino of vecinos) {
-      const entrada = porVecino.get(vecino.producto_id) ?? { nombre: vecino.nombre, imagen: vecino.imagen, sims: [] };
-      entrada.sims.push(vecino.similitud);
-      porVecino.set(vecino.producto_id, entrada);
-    }
+    if (!modelo) continue;
+    fuentes.push({ modeloId: modelo.id, tipo: modelo.tipo, vector: JSON.stringify(embedding.vector) });
   }
 
-  return [...porVecino.entries()]
-    .map(([id, { nombre, imagen, sims }]) => ({
-      id,
-      nombre,
-      imagen,
-      similitud: sims.reduce((a, b) => a + b, 0) / sims.length,
-    }))
-    .sort((a, b) => b.similitud - a.similitud)
-    .slice(0, 3);
+  const vecinos = (await vecinosPorPromedio(fuentes, umbral, null)).slice(0, 3);
+  const resultado: PosibleDuplicado[] = [];
+  for (const vecino of vecinos) {
+    const ficha = await queryOne<{ nombre: string; imagen: string | null }>(
+      `SELECT p.nombre, img.url AS imagen
+         FROM productos p
+         LEFT JOIN producto_imagenes img ON img.producto_id = p.id AND img.es_principal
+        WHERE p.id = $1`,
+      [vecino.productoId],
+    );
+    if (ficha) resultado.push({ id: vecino.productoId, nombre: ficha.nombre, imagen: ficha.imagen, similitud: vecino.combinada });
+  }
+  return resultado;
 }
 
 // --- Revisión de fichas (migración 006: según el modo de carga) ------------

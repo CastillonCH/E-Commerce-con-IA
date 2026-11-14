@@ -670,7 +670,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           clasificacion: clasificacionB,
         });
 
-        const detectados = await detectarYRegistrarDuplicados(b.productId, 0.9);
+        const detectados = await detectarYRegistrarDuplicados(b.productId);
         expect(detectados.some((d) => d.productoId === a.productId)).toBe(true);
 
         const listados = await listDetectedDuplicates();

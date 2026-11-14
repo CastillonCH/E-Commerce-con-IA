@@ -9,3 +9,6 @@ notebooks/*.ipynb_checkpoints/
 *.bin
 *.joblib
 modelos/
+datos_it3/
+modelos_it3/
+datos_propios/

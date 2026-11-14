@@ -40,25 +40,7 @@ export async function listModelosIA(): Promise<ModeloIA[]> {
   }));
 }
 
-// Metas del T1 (Tabla 10) para comparar "cumple / no cumple" en /admin/modelos.
-export const METAS_T1: Record<string, { etiqueta: string; cumple: (m: Record<string, number>) => boolean }> = {
-  "cu1-resnet50-v1": {
-    etiqueta: "OE1: accuracy ≥ 80% y F1-macro ≥ 0,75",
-    cumple: (m) => (m.accuracy ?? 0) >= 0.8 && (m.f1_macro ?? 0) >= 0.75,
-  },
-  "cu1-efficientnet-b0-v1": {
-    etiqueta: "OE1: accuracy ≥ 80% y F1-macro ≥ 0,75",
-    cumple: (m) => (m.accuracy ?? 0) >= 0.8 && (m.f1_macro ?? 0) >= 0.75,
-  },
-  "cu2-beto-v1": {
-    etiqueta: "OE2: F1-macro ≥ 0,85",
-    cumple: (m) => (m.f1_macro ?? 0) >= 0.85,
-  },
-  "cu2-tfidf-logreg-v1": {
-    etiqueta: "Baseline de referencia para OE2 (no tiene meta propia)",
-    cumple: () => true,
-  },
-};
+// Las metas del T1 (validación y prueba por separado) están en lib/metas-t1.ts.
 
 export interface MetricasClasificacion {
   modelo: string;

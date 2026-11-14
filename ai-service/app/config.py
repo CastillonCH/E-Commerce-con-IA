@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     # servicio NO exige autenticación — útil solo para correr en local;
     # en cualquier despliegue real debe estar seteado.
     ai_api_key: str | None = None
-    peso_fusion_imagen: float = 0.6
+    # 0,65: elegido en validación por ml/evaluar_fusion.py (iteración 3).
+    peso_fusion_imagen: float = 0.65
     port: int = 8000
 
 

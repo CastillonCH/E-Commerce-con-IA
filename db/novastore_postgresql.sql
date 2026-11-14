@@ -379,9 +379,9 @@ CREATE TABLE modelos_ia (
     entrenado_en         timestamptz,
     creado_en            timestamptz  NOT NULL DEFAULT now()
 );
--- Solo un modelo en producción por tipo (imagen / texto / multimodal).
-CREATE UNIQUE INDEX ux_modelos_ia_en_produccion
-    ON modelos_ia (tipo) WHERE estado = 'en_produccion';
+-- Puede haber varios en producción: la fusión combina ResNet-50,
+-- EfficientNet-B0 y BETO (ver db/migraciones/007_tres_modelos_en_produccion.sql).
+COMMENT ON COLUMN modelos_ia.estado IS 'en_produccion = lo usa la tienda (pueden ser varios: la fusión combina ResNet-50, EfficientNet-B0 y BETO).';
 
 -- Cada inferencia del modelo. Es la fuente de la respuesta AIResponse del
 -- frontend y de las métricas en producción.

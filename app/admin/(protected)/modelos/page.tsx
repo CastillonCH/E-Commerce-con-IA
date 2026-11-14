@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth";
 import { obtenerSaludIA } from "@/lib/ai-client";
 import {
   listModelosIA,
-  METAS_T1,
   obtenerLineaBase,
   obtenerMetricasClasificacion,
   obtenerMetricasDuplicados,
@@ -21,6 +20,7 @@ import {
 } from "@/lib/data/carga-repo";
 import { getServerEnv } from "@/lib/env.server";
 import { cn } from "@/lib/utils";
+import { METAS_T1, NOMBRE_CONJUNTO, SIN_META, metricasDe, type MetricasConjunto } from "@/lib/metas-t1";
 
 export default async function AdminModelosPage() {
   const session = await getSession();
@@ -42,6 +42,11 @@ export default async function AdminModelosPage() {
   const hayExperimento = avance.some((grupo) => grupo.cargadas > 0);
   const proceso = await obtenerMetricasProceso(hayExperimento);
   const ahorro = ahorroPorcentual(carga);
+  const metricasPorConjunto = {
+    val: Object.fromEntries(modelos.map((m) => [m.codigo, metricasDe(m.metricas, "val")])),
+    test: Object.fromEntries(modelos.map((m) => [m.codigo, metricasDe(m.metricas, "test")])),
+  } satisfies Record<"val" | "test", Record<string, MetricasConjunto>>;
+  const nPrueba = modelos.map((m) => m.metricas.n_test).find((n) => typeof n === "number");
   const modoCatalogo = getServerEnv().MODO_CATALOGO;
 
   return (
@@ -97,79 +102,78 @@ export default async function AdminModelosPage() {
         </div>
       </div>
 
-      {/* Tabla de modelos vs. metas del T1 */}
-      <div>
-        <h2 className="mb-3 text-lg font-semibold text-slate-900">
+      {/* Tabla de modelos vs. metas del T1: validación y prueba por separado */}
+      <section aria-labelledby="titulo-modelos">
+        <h2 id="titulo-modelos" className="mb-1 text-lg font-semibold text-slate-900">
           Modelos registrados
         </h2>
+        <p className="mb-3 text-sm text-slate-500">
+          <strong>Validación</strong>: datos con los que se eligió la mejor época y el peso de la fusión.{" "}
+          <strong>Prueba</strong>: {nPrueba ? `${nPrueba} productos` : "productos"} que ningún modelo vio al
+          entrenar; es la medida que vale para las metas. La tienda usa la fusión de los modelos en producción.
+        </p>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full min-w-[880px] text-left text-sm">
+            <caption className="sr-only">Modelos de IA frente a las metas del T1</caption>
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
-                <th scope="col" className="px-4 py-3 font-medium">Código</th>
-                <th scope="col" className="px-4 py-3 font-medium">Arquitectura</th>
+                <th scope="col" className="px-4 py-3 font-medium">Modelo</th>
                 <th scope="col" className="px-4 py-3 font-medium">Estado</th>
-                <th scope="col" className="px-4 py-3 font-medium">Métricas</th>
+                <th scope="col" className="px-4 py-3 font-medium">{NOMBRE_CONJUNTO.val}</th>
+                <th scope="col" className="px-4 py-3 font-medium">{NOMBRE_CONJUNTO.test}</th>
                 <th scope="col" className="px-4 py-3 font-medium">Meta del T1</th>
               </tr>
             </thead>
             <tbody>
               {modelos.map((modelo) => {
                 const meta = METAS_T1[modelo.codigo];
-                const tieneMetricas = Object.keys(modelo.metricas).length > 0;
-                const cumple = tieneMetricas && meta ? meta.cumple(modelo.metricas) : null;
                 return (
                   <tr key={modelo.codigo} className="border-b border-slate-100 text-slate-700 last:border-0">
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-sm">{modelo.codigo}</td>
-                    <td className="px-4 py-3">{modelo.arquitectura}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-mono text-sm text-slate-900">{modelo.codigo}</p>
+                      <p className="text-xs text-slate-500">{modelo.arquitectura}</p>
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
+                          "whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
                           modelo.estado === "en_produccion" && "bg-emerald-100 text-emerald-700",
                           modelo.estado === "evaluado" && "bg-sky-100 text-sky-700",
                           modelo.estado === "planificado" && "bg-slate-100 text-slate-600",
                         )}
                       >
-                        {modelo.estado}
+                        {ETIQUETA_ESTADO[modelo.estado] ?? modelo.estado}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      {tieneMetricas ? (
-                        <ul className="flex flex-wrap gap-1.5">
-                          {Object.entries(modelo.metricas).map(([clave, valor]) => (
-                            <li
-                              key={clave}
-                              className="rounded-md bg-slate-100 px-2 py-1 text-[13px] leading-tight text-slate-600"
-                            >
-                              {clave}{" "}
-                              <span className="font-semibold text-slate-900">
-                                {typeof valor === "number" ? valor.toFixed(3) : valor}
+                    {(["val", "test"] as const).map((conjunto) => {
+                      const m = metricasPorConjunto[conjunto][modelo.codigo];
+                      const cumple = meta ? meta.cumple(m, metricasPorConjunto[conjunto]) : null;
+                      return (
+                        <td key={conjunto} className="px-4 py-3" data-testid={`${conjunto}-${modelo.codigo}`}>
+                          {m.accuracy === null && m.f1 === null ? (
+                            <span className="text-slate-500">Sin dato</span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              {cumple === true && <CheckCircle2 aria-label="Cumple la meta" className="h-4 w-4 shrink-0 text-emerald-600" />}
+                              {cumple === false && <XCircle aria-label="No cumple la meta" className="h-4 w-4 shrink-0 text-red-600" />}
+                              <span>
+                                {m.accuracy !== null && <>acc {formatearPct(m.accuracy)}</>}
+                                {m.accuracy !== null && m.f1 !== null && " · "}
+                                {m.f1 !== null && <>F1 {m.f1.toFixed(3).replace(".", ",")}</>}
                               </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span className="text-slate-500">Sin entrenar todavía</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {meta ? (
-                        <span className={cn("flex items-start gap-1.5", cumple ? "text-emerald-700" : "text-slate-500")}>
-                          {cumple !== null && (cumple ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />)}
-                          {meta.etiqueta}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-3 text-slate-600">{meta?.etiqueta ?? SIN_META[modelo.codigo] ?? "—"}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Proceso completo: carga + revisión, contra la referencia */}
       <section aria-labelledby="titulo-proceso">
@@ -405,6 +409,16 @@ function TablaProceso({ proceso }: { proceso: ResumenProceso }) {
     </div>
   );
 }
+
+const ETIQUETA_ESTADO: Record<string, string> = {
+  en_produccion: "En producción",
+  evaluado: "Evaluado",
+  planificado: "Planificado",
+  entrenando: "Entrenando",
+  retirado: "Retirado",
+};
+
+const formatearPct = (valor: number) => `${(valor * 100).toFixed(1).replace(".", ",")}%`;
 
 function Tarjeta({
   etiqueta,
